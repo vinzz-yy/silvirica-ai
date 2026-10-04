@@ -7,19 +7,13 @@
 ### 유니버설 AI 인텔리전스 향상 런타임
 **저토큰 • 초고속 • 멀티 IDE • 멀티 에이전트 • 지식 그래프 • Obsidian 메모리 • 142개 스킬 • 제로 토큰 실행**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python: 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
-[![Skills: 142 Ready](https://img.shields.io/badge/Skills-142%20Builtin-orange.svg)](#-스킬-시스템-142개-전문-스킬)
-[![Token Savings: ~99%](https://img.shields.io/badge/Token%20Savings-~99%25-success.svg)](#-핵심-가치)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square&logo=open-source-initiative&logoColor=white)](LICENSE)
+[![Python: 3.9+](https://img.shields.io/badge/python-3.9+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Skills: 153 Ready](https://img.shields.io/badge/Skills-153%20Progressive-orange.svg?style=flat-square&logo=codewars&logoColor=white)](#-스킬-시스템-142개-전문-스킬)
+[![Token Savings: ~99%](https://img.shields.io/badge/Token%20Savings-~99%25-success.svg?style=flat-square&logo=speedtest&logoColor=white)](#-핵심-가치)
 
 [English](README.md) • [日本語](README.ja.md) • [한국어](README.ko.md) • [中文](README.zh.md)
 
-</div>
-
----
-
-<div align="center">
-<img src="assets/silvirica-creation-hands.png" alt="Silvirica AI Core Spark" width="90%"/>
 </div>
 
 ---

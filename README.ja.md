@@ -7,19 +7,13 @@
 ### ユニバーサルAIインテリジェンス拡張ランタイム
 **低トークン • 超高速 • マルチIDE • マルチエージェント • ナレッジグラフ • Obsidianメモリ • 142スキル • ゼロトークン実行**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python: 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
-[![Skills: 142 Ready](https://img.shields.io/badge/Skills-142%20Builtin-orange.svg)](#-スキルシステム-142の特化型スキル)
-[![Token Savings: ~99%](https://img.shields.io/badge/Token%20Savings-~99%25-success.svg)](#-主な価値提案)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square&logo=open-source-initiative&logoColor=white)](LICENSE)
+[![Python: 3.9+](https://img.shields.io/badge/python-3.9+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Skills: 153 Ready](https://img.shields.io/badge/Skills-153%20Progressive-orange.svg?style=flat-square&logo=codewars&logoColor=white)](#-スキルシステム-142の特化型スキル)
+[![Token Savings: ~99%](https://img.shields.io/badge/Token%20Savings-~99%25-success.svg?style=flat-square&logo=speedtest&logoColor=white)](#-主な価値提案)
 
 [English](README.md) • [日本語](README.ja.md) • [한국어](README.ko.md) • [中文](README.zh.md)
 
-</div>
-
----
-
-<div align="center">
-<img src="assets/silvirica-creation-hands.png" alt="Silvirica AI Core Spark" width="90%"/>
 </div>
 
 ---

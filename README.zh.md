@@ -7,19 +7,13 @@
 ### 通用 AI 智能增强运行时
 **极低 Token • 超高速 • 多 IDE 兼容 • 多 Agent 架构 • 知识图谱 • Obsidian 记忆库 • 142 项技能 • 零 Token 执行**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python: 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
-[![Skills: 142 Ready](https://img.shields.io/badge/Skills-142%20Builtin-orange.svg)](#-技能体系-142-项专业技能)
-[![Token Savings: ~99%](https://img.shields.io/badge/Token%20Savings-~99%25-success.svg)](#-核心优势)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square&logo=open-source-initiative&logoColor=white)](LICENSE)
+[![Python: 3.9+](https://img.shields.io/badge/python-3.9+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![Skills: 153 Ready](https://img.shields.io/badge/Skills-153%20Progressive-orange.svg?style=flat-square&logo=codewars&logoColor=white)](#-技能体系-142-项专业技能)
+[![Token Savings: ~99%](https://img.shields.io/badge/Token%20Savings-~99%25-success.svg?style=flat-square&logo=speedtest&logoColor=white)](#-核心优势)
 
 [English](README.md) • [日本語](README.ja.md) • [한국어](README.ko.md) • [中文](README.zh.md)
 
-</div>
-
----
-
-<div align="center">
-<img src="assets/silvirica-creation-hands.png" alt="Silvirica AI Core Spark" width="90%"/>
 </div>
 
 ---

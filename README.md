@@ -7,21 +7,15 @@
 ### Universal AI Intelligence Enhancement Runtime
 **Low-Token • Ultra-Fast • Multi-IDE • Multi-Agent • Knowledge Graph • Obsidian Memory • 142 Skills • Zero-Token Path**
 
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![Python: 3.9+](https://img.shields.io/badge/python-3.9+-blue.svg)](https://www.python.org/)
-[![MCP Protocol: 1.0](https://img.shields.io/badge/MCP-Protocol%201.0-brightgreen.svg)](https://modelcontextprotocol.io)
-[![Skills: 142 Ready](https://img.shields.io/badge/Skills-142%20Builtin-orange.svg)](#-skill-system-142-specialized-skills)
-[![Token Savings: ~99%](https://img.shields.io/badge/Token%20Savings-~99%25-success.svg)](#-key-value-propositions)
-[![Platform: Windows | macOS | Linux](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey.svg)](#-instant-one-line-installation)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square&logo=open-source-initiative&logoColor=white)](LICENSE)
+[![Python: 3.9+](https://img.shields.io/badge/python-3.9+-3776AB.svg?style=flat-square&logo=python&logoColor=white)](https://www.python.org/)
+[![MCP Protocol: 1.0](https://img.shields.io/badge/MCP-Protocol%201.0-brightgreen.svg?style=flat-square&logo=anthropic&logoColor=white)](https://modelcontextprotocol.io)
+[![Skills: 153 Ready](https://img.shields.io/badge/Skills-153%20Progressive-orange.svg?style=flat-square&logo=codewars&logoColor=white)](#-skill-system-153-specialized-skills)
+[![Token Savings: ~99%](https://img.shields.io/badge/Token%20Savings-~99%25-success.svg?style=flat-square&logo=speedtest&logoColor=white)](#-key-value-propositions)
+[![Platform: Windows | macOS | Linux](https://img.shields.io/badge/Platform-Windows%20%7C%20macOS%20%7C%20Linux-6366f1.svg?style=flat-square)](#-instant-one-line-installation)
 
 [English](README.md) • [日本語](README.ja.md) • [한국어](README.ko.md) • [中文](README.zh.md)
 
-</div>
-
----
-
-<div align="center">
-<img src="assets/silvirica-creation-hands.png" alt="Silvirica AI Core Spark" width="90%"/>
 </div>
 
 ---
