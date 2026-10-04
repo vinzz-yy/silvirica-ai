@@ -1,4 +1,5 @@
 from __future__ import annotations
+import re
 from pathlib import Path
 from typing import Dict, List, Optional
 import yaml
@@ -100,30 +101,93 @@ class SkillLoader:
     def __init__(self, custom_skills_dir: Optional[Path] = None):
         self.custom_skills_dir = custom_skills_dir
         self.skills: Dict[str, SkillDefinition] = dict(BUILTIN_SKILLS)
-        if self.custom_skills_dir and self.custom_skills_dir.exists():
-            self._load_custom_skills()
+        self._load_all_skill_sources()
 
-    def _load_custom_skills(self) -> None:
-        if not self.custom_skills_dir:
-            return
-        for path in self.custom_skills_dir.glob("*.yaml"):
-            try:
-                with open(path, "r", encoding="utf-8") as f:
-                    data = yaml.safe_load(f)
-                    if isinstance(data, dict) and "name" in data:
-                        self.skills[data["name"]] = SkillDefinition(
-                            name=data["name"],
-                            version=str(data.get("version", "1.0.0")),
-                            description=data.get("description", ""),
-                            triggers=data.get("triggers", []),
-                            priority=data.get("priority", "medium"),
-                            summary=data.get("summary", ""),
-                            instructions=data.get("instructions", ""),
-                            tools=data.get("tools", []),
-                            knowledge=data.get("knowledge", []),
-                        )
-            except Exception:
-                pass
+    def _load_all_skill_sources(self) -> None:
+        # 1. Custom skills dir
+        if self.custom_skills_dir and self.custom_skills_dir.exists():
+            self._scan_skill_directory(self.custom_skills_dir)
+
+        # 2. Workspace root skills dir
+        root_skills = Path(__file__).resolve().parent.parent.parent / "skills"
+        if root_skills.exists():
+            self._scan_skill_directory(root_skills)
+
+    def _scan_skill_directory(self, base_dir: Path) -> None:
+        try:
+            for item in base_dir.iterdir():
+                if item.is_dir():
+                    skill_md = item / "SKILL.md"
+                    if skill_md.exists():
+                        self._parse_skill_md(skill_md, item.name)
+                elif item.is_file() and item.suffix in [".yaml", ".yml"]:
+                    self._parse_skill_yaml(item)
+        except Exception:
+            pass
+
+    def _parse_skill_yaml(self, path: Path) -> None:
+        try:
+            with open(path, "r", encoding="utf-8") as f:
+                data = yaml.safe_load(f)
+                if isinstance(data, dict) and "name" in data:
+                    self.skills[data["name"]] = SkillDefinition(
+                        name=data["name"],
+                        version=str(data.get("version", "1.0.0")),
+                        description=data.get("description", ""),
+                        triggers=data.get("triggers", []),
+                        priority=data.get("priority", "medium"),
+                        summary=data.get("summary", ""),
+                        instructions=data.get("instructions", ""),
+                        tools=data.get("tools", []),
+                        knowledge=data.get("knowledge", []),
+                    )
+        except Exception:
+            pass
+
+    def _parse_skill_md(self, path: Path, folder_name: str) -> None:
+        try:
+            raw = path.read_text(encoding="utf-8-sig", errors="ignore").strip()
+            if raw.startswith("---"):
+                parts = raw.split("---", 2)
+                if len(parts) >= 3:
+                    fm = yaml.safe_load(parts[1]) or {}
+                    body = parts[2].strip()
+                    name = str(fm.get("name", folder_name)).strip('"\'')
+                    desc = str(fm.get("description", ""))
+                    triggers = [folder_name, name]
+                    if "triggers" in fm and isinstance(fm["triggers"], list):
+                        triggers.extend(fm["triggers"])
+                    elif "use when the user says:" in desc.lower():
+                        clause = desc.lower().split("use when the user says:")[-1]
+                        triggers.extend([t.strip().rstrip(".").strip('"\'') for t in clause.split(",") if t.strip()])
+
+                    summary = desc[:200] if desc else f"Specialized skill for {name}."
+                    self.skills[name] = SkillDefinition(
+                        name=name,
+                        version="1.0.0",
+                        description=desc,
+                        triggers=list(set(triggers)),
+                        priority="medium",
+                        summary=summary,
+                        instructions=body[:3000],
+                        tools=["symbol_index", "context_compiler"],
+                        knowledge=[],
+                    )
+            else:
+                # If no YAML frontmatter, treat folder name as skill name
+                self.skills[folder_name] = SkillDefinition(
+                    name=folder_name,
+                    version="1.0.0",
+                    description=raw[:200],
+                    triggers=[folder_name],
+                    priority="medium",
+                    summary=raw[:200],
+                    instructions=raw[:3000],
+                    tools=["symbol_index", "context_compiler"],
+                    knowledge=[],
+                )
+        except Exception:
+            pass
 
     def get_skill(self, name: str) -> Optional[SkillDefinition]:
         return self.skills.get(name)

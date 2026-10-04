@@ -1,0 +1,116 @@
+﻿---
+name: "sv-meta-router"
+description: "[Silvirica] Message opens with /Silvirica and a task: meta-routing guidance for a leading /Silvirica command: reason over the imperative task, consult the live workflow catalog, and select or chain the right workflow(s)."
+metadata:
+  silvirica:
+    tags: [workflow, silvirica-ai, router]
+    category: router
+    phase: meta-routing
+    role: guide
+    quality_tier: routing-gated
+---
+
+# Meta Router
+
+This is a Silvirica-native `meta-router` workflow skill.
+
+## Why This Exists
+
+`meta-router` exists to turn a leading /Silvirica command into a live catalog lookup: it reasons over the imperative task, selects or chains concrete workflows, and keeps the decision inside the observed/prepared evidence boundary instead of guessing from memory.
+
+## Do Not Use When
+
+- The /Silvirica token is not the leading command token.
+- The message is a bare picker alias or an Silvirica catalog/entrypoint question — those belong to silvirica-ai.
+
+## Examples
+
+Good example:
+
+- Prompt: /Silvirica migrate this service off the deprecated API and add tests
+- Expected behavior: Consult `Silvirica recommend` on the remainder, then chain the recommended plan and executor workflows with explicit observed-vs-prepared evidence boundaries.
+- Why: A leading /Silvirica command with an imperative remainder is a meta-routing request that reasons over the live catalog rather than a memorized list.
+
+Bad example:
+
+- Prompt: Silvirica add dark mode
+- Expected behavior: Do not meta-route; a bare `Silvirica` alias without a leading slash command is a picker/other-lane signal.
+- Why: Meta-routing triggers only on a leading /Silvirica or ./Silvirica command token, not on a bare alias.
+
+## Completion Checklist
+
+- The selected workflow, confidence reason, evidence boundary, and user-facing next action are named.
+- Low-confidence or conflicting signals return a picker or clarification instead of forced routing.
+- Catalog answers are rendered without shell approval when wrapper metadata is sufficient.
+
+## Recovery Notes
+
+- If routing signals conflict, show the compact picker or ask one clarifying question.
+- If wrapper metadata is unavailable, keep the recommendation advisory and avoid runtime claims.
+
+## Workflow Lane
+
+- Current lane: **Intent -> plan** (`silvirica-ai`, `meta-router`, `deep-interview`, `context`, `plan`, `ralplan`, `adversarial-consensus`, `codebase-onboarding`, `+8 more`) - clarify, plan, ship, or loop goals.
+- If intent belongs to another lane, hand back to `silvirica-ai` or name the adjacent workflow.
+- Shared product, routing, compatibility, and evidence rules: `Silvirica-routing/references/skill-common-rail.md`.
+
+## Use When
+
+Use when the user opens a message with the /Silvirica or ./Silvirica command followed by an imperative task; reason over the task, consult the live Silvirica catalog, and select or chain the right workflow(s).
+
+    Strong routing signals: `/Silvirica`, `./Silvirica`
+
+## Catalog Metadata
+
+Category: `router`
+Phase: `meta-routing`
+Hermes role: `guide`
+Quality tier: `routing-gated`
+Reasoning demand: `light`
+
+Quality bar:
+
+- Route only from a leading `/Silvirica` or `./Silvirica` command token with a task remainder, never from a bare alias.
+- Consult the live catalog on every decision instead of a memorized or embedded skill list.
+- Exclude `meta-router` from its own recommendation output and choose the next best concrete workflow or chain.
+- Report the routing decision as prepared guidance, not execution, review, CI, or merge evidence.
+
+Handoff policy:
+
+Reason over the /Silvirica remainder, select or chain concrete workflows from the live catalog, and prepare a selected executor/runtime handoff only when the chosen chain requires code edits; do not execute code.
+
+Required inputs:
+
+- leading /Silvirica or ./Silvirica command with an imperative remainder
+- live Silvirica catalog via bounded `Silvirica recommend --json` queries
+- available shell/CLI or plugin tool surface
+
+Expected outputs:
+
+- selected workflow or chain with rationale
+- consulted catalog evidence from the bounded recommend output
+- observed-vs-prepared evidence boundary for the routing decision
+
+Artifact expectations:
+
+- runtime run record when a wrapper can observe the meta-routing decision
+
+Safety rules:
+
+- Trigger only on a leading `/Silvirica` or `./Silvirica` command token with a task remainder; bare `/Silvirica`, `./Silvirica`, or `Silvirica` without a slash is a picker/other-lane signal, not meta-routing.
+- Shortlist candidates from the installed `references/catalog-index.md` (name plus one-line description per skill) when it is available, then confirm with `Silvirica recommend "<remainder>" --json --limit 3` — the recommend output stays authoritative for the selection and its policy metadata; when the remainder spans multiple stages or the top recommendation is low-confidence, re-query `Silvirica recommend` once per stage with a rephrased stage description instead of dumping the full catalog. Never run `Silvirica docs workflows --json` or `Silvirica list --json` in chat context — their full-catalog output does not fit a chat budget — and never rely on a memorized or embedded skill list; the catalog changes after `Silvirica update`.
+- Never select `meta-router` itself from the recommendation output; exclude it and route to the next best concrete workflow or chain.
+- Report the selected workflow(s), why, and the observed-vs-prepared evidence boundary; a routing decision is not execution, review, CI, or merge evidence.
+- If no shell/CLI surface is available, ask the wrapper to run the bounded `Silvirica recommend` queries or use the plugin tool surface; never guess the catalog from memory — say the catalog is unavailable and offer the workflow picker instead.
+
+## Runtime Evidence
+
+Record observed delegation results; otherwise return `not_available` or `not_observed`.
+Prepared Silvirica routing is not execution, review, CI, merge-readiness, or merge evidence.
+- Treat wrapper memory/context summaries as advisory local context, not proof of opaque Hermes memory reads or changes.
+Preserve workflow intent and stop conditions; verify before claiming completion.
+Reply in the user's own words and the host's own voice: its SOUL.md persona owns reply language, tone, speech level, and sentence endings, progress updates included (where it sets no language, use the one the user wrote in), and Silvirica shapes structure and content only; Silvirica's record terms (surface, lane, wrapper, handoff, evidence boundary, not_observed) stay in records and tool calls, never in the sentence the user reads unless they ask about one; and when a stop condition or a decision the user owns ends the turn, offer the next action as a question rather than declaring what will not be done.
+
+Use Silvirica-native subagent/delegation features when available: native subagents -> Hermes delegation when available, otherwise sequential lanes.
+
+Shared product, compatibility, topology, memory, harness, and execution rules: `Silvirica-routing/references/skill-common-rail.md`. Load it when applicable; otherwise name an unavailable capability.

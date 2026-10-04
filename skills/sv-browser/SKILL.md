@@ -1,0 +1,136 @@
+﻿---
+name: "sv-browser"
+description: "[Silvirica] Browser login, click, or form task: policy overlay for browser tasks - add auth, confirmation, and observed-trace gates after preferring the native browser for ordinary URL, click, login, and form actions. Use when the user says: browser-operator, browser operator, browser task, browser operation, browser automation, browser session, webpage operation, web page operation."
+metadata:
+  silvirica:
+    tags: [workflow, silvirica-ai, browser]
+    category: browser
+    phase: browser-task
+    role: guide
+    quality_tier: workflow-surface-gated
+---
+
+# Browser Operator
+
+This is a Silvirica-native `browser-operator` workflow skill.
+
+## Why This Exists
+
+`browser-operator` exists so Hermes users can ask for this workflow in chat and get a structured, checkable answer instead of an improvised one.
+
+## Do Not Use When
+
+- The request is already handled by a narrower explicit skill with stronger evidence.
+- The user asks Silvirica to secretly run external platforms, connectors, schedulers, file exports, or runtime agents.
+- The only safe answer is to ask for missing authority, credentials, target, or observed evidence first.
+
+## Examples
+
+Good example:
+
+- Prompt: browser-operator open the staging checkout URL, click login, fill the form, and capture blockers.
+- Expected behavior: Produce `prepare_browser_operator_card` with required context, wrapper actions, and not-evidence boundaries.
+- Why: The prompt names a real workflow surface that Hermes can orchestrate without hiding execution.
+
+Bad example:
+
+- Prompt: browser-operator use saved credentials and submit the production payment form without confirmation.
+- Expected behavior: Report the missing observed evidence or authority instead of claiming the external step happened.
+- Why: Prepared Silvirica guidance is not platform, runtime, connector, file, memory, or delivery evidence.
+
+## Completion Checklist
+
+- Specify URL, allowed/prohibited actions, auth boundary, stop condition.
+- Gate credentials/login/payment/purchase/destruction/scraping/export; observed traces only.
+- Host request admission (not enablement/adapter presence) gates schemas/context/callbacks/writes. Refuse foreign/stale/expired/released/ambiguous targets; no index fallback.
+- omh_browser blocks native browser_*; inert by default. Opted-in effects need exact approval: docs/BROWSER-EFFECTS.md.
+
+## Recovery Notes
+
+- Missing target/confirmation: ask; visual correctness: visual-qa.
+- Refresh stale state once; never replay unknown work. Reuse acquisitions; only owner adapter/version reaps. Release needs observed cleanup, not mutation approval.
+- Host receipt BLOCK: production click/submit, retry after auth/4xx/assertion/mutation failure, or over two transient read-only retries.
+- POSIX native agent-browser collector: cold-desktop anonymous read-only Chromium only; other engine/profile/fixture/locale/timezone: named blocker (unsupported_browser_engine_webkit), never substitution.
+- Trace drift: `promotion status` unlinks only managed SKILL.md, keeps generations/receipts; no autoheal/watch/global fallback.
+
+## Workflow Lane
+
+- Current lane: **Automation and status** (`achievements`, `workspace-audit`, `production-audit`, `live-incident-response`, `automation-blueprint`, `github-event-ops`, `github-issue-intake`, `buzz`, `+39 more`) - schedules, status, health, and ops review.
+- If intent belongs to another lane, hand back to `silvirica-ai` or name the adjacent workflow.
+- Shared product, routing, compatibility, and evidence rules: `Silvirica-routing/references/skill-common-rail.md`.
+
+## Use When
+
+Use when Hermes should prepare or supervise a browser/page interaction request such as opening a URL, clicking, logging in, filling forms, or capturing page blockers without claiming browser execution.
+
+    Strong routing signals: `browser-operator`, `browser operator`, `browser task`, `browser operation`, `browser automation`, `browser session`, `webpage operation`, `web page operation`, `open url`, `open the url`, `open page`, `open the page`, `visit url`, `visit page`, `navigate url`, `navigate page`, `click page`, `click this page`, `click button`, `click login`, `login page`, `fill form`, `fill the form`, `submit form`, `checkout url`, `capture blockers`, `page blockers`, `interactive page`, `browser trace`, `browser observation`, `playwright task`, `웹페이지`, `웹 페이지`, `브라우저`, `브라우저 작업`, `브라우저 조작`, `페이지 열고`, `url 열고`, `링크 열고`, `클릭`, `로그인`, `로그인 폼`, `폼 작성`, `폼 입력`, `캡처`, `막히는 부분`
+
+## Catalog Metadata
+
+Category: `browser`
+Phase: `browser-task`
+Hermes role: `guide`
+Quality tier: `workflow-surface-gated`
+Reasoning demand: `standard`
+
+Quality bar:
+
+- Name the user-facing workflow objective, required context, next action, and stop condition.
+- Separate prepared guidance from observed platform, runtime, connector, file, memory, or delivery evidence.
+- Expose missing tools, credentials, targets, or observations as user-visible gaps.
+
+Handoff policy:
+
+Keep this as Hermes-facing orchestration guidance first. Prepare executor, connector, gateway, or host-runtime handoff only when the user accepts that next step and observed evidence can be recorded.
+
+Required inputs:
+
+- user request
+- target context
+- delivery or status expectation
+- known missing evidence
+
+Expected outputs:
+
+- browser_task_card/v1
+- browser_interaction_scope/v1
+- browser_auth_boundary/v1
+- browser_observation_manifest/v1 when observed
+- browser_confirmation_gate/v1 when destructive
+- browser_adapter_capabilities/v1 when acquired
+- browser_session_lease/v1 when acquired
+- browser_page_state/v1 when observed
+- next action
+- prepared-vs-observed boundary
+
+Artifact expectations:
+
+- browser_task_card/v1 metadata only
+- browser_interaction_scope/v1: URL, allowed/prohibited actions, stop condition
+- browser_auth_boundary/v1: supplied/missing/prohibited credentials
+- browser_observation_manifest/v1: observed screenshots/DOM notes/console/network/click traces only
+- Leases: docs/BROWSER-ADAPTER.md; owner/adapter/version/task scope, cached capabilities, digest-only state, exact revision handles.
+- browser_skill_promotion/v1: `Silvirica web-qa promotion diff`, `approve` its exact digest, then `promote` one receipt; SKILL.md alone commits visibility
+
+Safety rules:
+
+- Cards prove no execution. Gate credentials and destructive actions; require observed traces.
+- Do not claim connector, gateway, runtime, file generation, memory mutation, or host automation evidence from prepared guidance.
+
+## Runtime Evidence
+
+Preferred harness for this skill: `browser-operator`.
+
+```sh
+Silvirica runtime record --skill browser-operator --harness browser-operator --status started
+```
+
+Record observed delegation results; otherwise return `not_available` or `not_observed`.
+Prepared Silvirica routing is not execution, review, CI, merge-readiness, or merge evidence.
+- Treat wrapper memory/context summaries as advisory local context, not proof of opaque Hermes memory reads or changes.
+Preserve workflow intent and stop conditions; verify before claiming completion.
+Reply in the user's own words and the host's own voice: its SOUL.md persona owns reply language, tone, speech level, and sentence endings, progress updates included (where it sets no language, use the one the user wrote in), and Silvirica shapes structure and content only; Silvirica's record terms (surface, lane, wrapper, handoff, evidence boundary, not_observed) stay in records and tool calls, never in the sentence the user reads unless they ask about one; and when a stop condition or a decision the user owns ends the turn, offer the next action as a question rather than declaring what will not be done.
+
+Use Silvirica-native subagent/delegation features when available: native subagents -> Hermes delegation when available, otherwise sequential lanes.
+
+Shared product, compatibility, topology, memory, harness, and execution rules: `Silvirica-routing/references/skill-common-rail.md`. Load it when applicable; otherwise name an unavailable capability.

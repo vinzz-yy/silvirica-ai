@@ -139,11 +139,12 @@ def main() -> None:
         print("=============================================================")
 
     elif args.command == "skills":
-        loader = SkillLoader(root / ".silvirica" / "skills")
+        loader = SkillLoader(root / "skills")
         skills = loader.list_skills()
         print(f"================ INSTALLED PROGRESSIVE SKILLS ({len(skills)}) ================")
-        for s in skills:
-            print(f"- {s.name:<18} (v{s.version}) [{s.priority.upper():<8}]: {s.description}")
+        for s in sorted(skills, key=lambda x: x.name):
+            desc = (s.description[:75] + '...') if len(s.description) > 75 else s.description
+            print(f"- {s.name:<32} [{s.priority.upper():<8}]: {desc}")
         print("=======================================================================")
 
     elif args.command == "memory":
