@@ -1,0 +1,68 @@
+name: silvirica ai
+version: 0.1.0
+mode: AUTO
+languages:
+- Python
+frameworks: []
+package_managers:
+- pip
+ignore_patterns:
+- .git
+- .silvirica
+- .idea
+- .vscode
+- __pycache__
+- '*.pyc'
+- node_modules
+- vendor
+- dist
+- build
+- .next
+- .nuxt
+- .turbo
+- target
+- .venv
+- venv
+- env
+- .pytest_cache
+- .coverage
+- htmlcov
+- .DS_Store
+providers:
+  default:
+    provider: openai_compatible
+    api_base: https://api.openai.com/v1
+    api_key_env: OPENAI_API_KEY
+    default_model: gpt-4o-mini
+    timeout_seconds: 30
+routing:
+  instant_model: local-deterministic
+  quick_model: gpt-4o-mini
+  standard_model: gpt-4o-mini
+  coder_model: gpt-4o
+  deep_model: o3-mini
+  architect_model: o3-mini
+  security_model: gpt-4o
+  visual_model: gpt-4o
+  research_model: gpt-4o
+  ultrabrain_model: o1
+  local_model: llama3
+token_budget:
+  max_context_tokens: 16000
+  target_compression_ratio: 0.1
+  trivial_task_max_tokens: 400
+  simple_task_max_tokens: 800
+  standard_task_max_tokens: 2500
+  complex_task_max_tokens: 6000
+  deep_task_max_tokens: 12000
+guardrails:
+  block_destructive_db: true
+  block_hardcoded_secrets: true
+  block_migration_auto_edit: true
+  require_approval_for_high_risk: true
+  secret_redaction_enabled: true
+active_skills:
+- coding-core
+- debugging
+- security-audit
+telemetry_enabled: true

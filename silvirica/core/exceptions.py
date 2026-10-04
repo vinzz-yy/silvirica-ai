@@ -1,0 +1,9 @@
+class SilviricaError(Exception): pass
+class ConfigError(SilviricaError): pass
+class ProjectNotInitializedError(SilviricaError): pass
+class SecurityViolationError(SilviricaError): pass
+class IndexingError(SilviricaError): pass
+class GraphError(SilviricaError): pass
+class MemoryError(SilviricaError): pass
+class ProviderError(SilviricaError): pass
+class SkillError(SilviricaError): pass

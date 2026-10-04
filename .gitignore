@@ -1,0 +1,27 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# Caches and virtual environments
+.pytest_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+.env
+
+# Silvirica project brain runtime caches & databases
+.silvirica/cache/
+.silvirica/metrics/
+.silvirica/graph/*.db
+.silvirica/symbols/*.db
+.silvirica/index/file_hashes.json
+
+# OS files
+.DS_Store
+Thumbs.db
+*.tmp
+*.log
