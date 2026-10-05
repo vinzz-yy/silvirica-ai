@@ -301,7 +301,8 @@ class MCPToolRegistry:
             return self.impact_analyzer.analyze_impact(node_id)
 
         elif name == "silvirica_git":
-            changed = GitWatcher.get_changed_files(self.root_path)
+            watcher = GitWatcher(self.root_path)
+            changed = watcher.get_modified_files()
             return {"changed_files": changed, "count": len(changed)}
 
         elif name == "silvirica_stats":

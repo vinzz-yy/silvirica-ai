@@ -25,7 +25,17 @@ class GraphQueryEngine:
         matching_nodes = self.db.search_nodes(search_term, limit=10)
         formatted = self.query(search_term, depth)
         return {
-            "nodes": matching_nodes,
+            "nodes": [
+                {
+                    "id": n.id,
+                    "kind": n.kind.value if hasattr(n.kind, "value") else str(n.kind),
+                    "name": n.name,
+                    "file_path": n.file_path,
+                    "line_number": n.line_number,
+                    "properties": n.properties,
+                }
+                for n in matching_nodes
+            ],
             "count": len(matching_nodes),
             "formatted": formatted,
         }

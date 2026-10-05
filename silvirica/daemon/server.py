@@ -25,8 +25,15 @@ class SilviricaDaemonHandler(BaseHTTPRequestHandler):
     def _is_origin_allowed(cls, origin: Optional[str]) -> bool:
         if not origin:
             return True
-        origin_lower = origin.lower()
-        return any(origin_lower.startswith(allowed) for allowed in cls.allowed_origins)
+        try:
+            parsed = urlparse(origin)
+            if parsed.scheme in ["vscode-webview", "silvirica"]:
+                return True
+            if parsed.scheme in ["http", "https"] and parsed.hostname in ["localhost", "127.0.0.1"]:
+                return True
+        except Exception:
+            return False
+        return False
 
     def _validate_auth(self) -> bool:
         # If no auth token configured, allow localhost loopback

@@ -64,6 +64,9 @@ class ModelRouter:
             best_model = self.outcome_engine.get_best_model_for_task(intent)
             if best_model:
                 return best_model
+        best_cat_model = self.outcome_engine.get_best_model_for_task(category.value)
+        if best_cat_model:
+            return best_cat_model
 
         routing = self.config.routing
         mapping = {
@@ -117,8 +120,23 @@ class ModelRouter:
         result["cache_hit"] = False
         result["escalations"] = 0
 
+        # Fallback to local deterministic provider if external provider failed
+        if not result.get("success") and provider != self.providers["local"]:
+            local_res = self.providers["local"].generate(
+                model=f"{model}-fallback", prompt=prompt, system_prompt=system_prompt, max_tokens=max_tokens
+            )
+            local_res["category"] = category.value
+            local_res["cache_hit"] = False
+            local_res["fallback_from_error"] = result.get("error")
+            result = local_res
+
         # 4. Result Validation & Auto-Escalation
         val = ResultValidator.validate_response(result.get("text", ""), task=task)
+        if not result.get("success"):
+            val.is_valid = False
+            val.needs_escalation = True
+            val.escalation_reason = result.get("error") or "Provider generation error"
+
         if auto_escalate and max_escalations > 0:
             if val.needs_escalation and category in [RoutingCategory.QUICK, RoutingCategory.STANDARD, RoutingCategory.CODER]:
                 handoff = EscalationManager.create_handoff(
@@ -145,10 +163,11 @@ class ModelRouter:
                 escalated_result["escalation_reason"] = val.escalation_reason
                 
                 # Record outcome
+                effective_task_type = task[:50] if task else category.value
                 self.outcome_engine.record_outcome(
                     TaskOutcome(
                         task_id=str(uuid.uuid4())[:8],
-                        task_type=category.value,
+                        task_type=effective_task_type,
                         task_description=task,
                         context_tokens=len(prompt) // 4,
                         skills_selected=[],
@@ -161,10 +180,11 @@ class ModelRouter:
                 return escalated_result
 
         # Record outcome
+        effective_task_type = task[:50] if task else category.value
         self.outcome_engine.record_outcome(
             TaskOutcome(
                 task_id=str(uuid.uuid4())[:8],
-                task_type=category.value,
+                task_type=effective_task_type,
                 task_description=task,
                 context_tokens=len(prompt) // 4,
                 skills_selected=[],

@@ -234,8 +234,8 @@ class ObsidianMemoryVault:
 
             # Staleness filter
             if not include_superseded and "superseded by" in content_lower:
-                # Still allow if query specifically mentions superseded or note has active sections
-                pass
+                if "superseded" not in query_lower:
+                    continue
 
             score = 0.0
             if query_lower == title_lower:

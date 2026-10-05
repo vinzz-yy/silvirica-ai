@@ -59,5 +59,47 @@ class TestMCPServer(unittest.TestCase):
         self.assertIn("name", text)
 
 
+    def test_mcp_call_git_tool(self) -> None:
+        req = json.dumps({
+            "jsonrpc": "2.0",
+            "id": 4,
+            "method": "tools/call",
+            "params": {"name": "silvirica_git", "arguments": {}},
+        })
+        raw_resp = self.server.handle_request(req)
+        resp = json.loads(raw_resp)
+        self.assertNotIn("error", resp)
+        self.assertIn("content", resp["result"])
+        text = json.loads(resp["result"]["content"][0]["text"])
+        self.assertIn("changed_files", text)
+
+    def test_mcp_call_graph_tool(self) -> None:
+        req = json.dumps({
+            "jsonrpc": "2.0",
+            "id": 5,
+            "method": "tools/call",
+            "params": {"name": "silvirica_graph", "arguments": {"query": "Test"}},
+        })
+        raw_resp = self.server.handle_request(req)
+        resp = json.loads(raw_resp)
+        self.assertNotIn("error", resp)
+        self.assertIn("content", resp["result"])
+        text = json.loads(resp["result"]["content"][0]["text"])
+        self.assertIn("nodes", text)
+        self.assertIn("count", text)
+
+    def test_mcp_call_route_tool(self) -> None:
+        req = json.dumps({
+            "jsonrpc": "2.0",
+            "id": 6,
+            "method": "tools/call",
+            "params": {"name": "silvirica_route", "arguments": {"task": "Fix security vulnerability"}},
+        })
+        raw_resp = self.server.handle_request(req)
+        resp = json.loads(raw_resp)
+        self.assertNotIn("error", resp)
+        self.assertIn("content", resp["result"])
+
+
 if __name__ == "__main__":
     unittest.main()

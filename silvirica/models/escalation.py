@@ -52,12 +52,15 @@ class EscalationManager:
         current_category: RoutingCategory = RoutingCategory.QUICK,
     ) -> CompressedHandoffPacket:
         # Determine next escalation category
-        next_cat = RoutingCategory.CODER
-        if current_category == RoutingCategory.QUICK:
+        if current_category == RoutingCategory.INSTANT:
+            next_cat = RoutingCategory.QUICK
+        elif current_category in [RoutingCategory.QUICK, RoutingCategory.STANDARD]:
             next_cat = RoutingCategory.CODER
-        elif current_category == RoutingCategory.CODER:
+        elif current_category in [RoutingCategory.CODER, RoutingCategory.ARCHITECT, RoutingCategory.SECURITY, RoutingCategory.VISUAL, RoutingCategory.RESEARCH, RoutingCategory.WRITING]:
             next_cat = RoutingCategory.DEEP
         elif current_category == RoutingCategory.DEEP:
+            next_cat = RoutingCategory.ULTRABRAIN
+        else:
             next_cat = RoutingCategory.ULTRABRAIN
 
         return CompressedHandoffPacket(

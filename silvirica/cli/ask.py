@@ -173,7 +173,7 @@ def execute_ask(
         dependencies=direct_dependencies[:5],
         callers_callees=callers_callees[:5],
         memory=memory_snippets,
-        graph_nodes=[n.name for n in graph_nodes],
+        graph_nodes=[(n.get("name", "") if isinstance(n, dict) else n.name) for n in graph_nodes],
         skills=skill_instructions,
         git_diffs=git_diff_summary,
         state_hash=state_hash,

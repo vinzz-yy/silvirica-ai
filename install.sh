@@ -42,10 +42,13 @@ ln -sf "${VENV_DIR}/bin/silvirica" "${BIN_DIR}/silvirica"
 
 echo ">> Linked executable to ${BIN_DIR}/silvirica"
 
-if [[ ":$PATH:" != *":${BIN_DIR}:"* ]]; then
-    echo ">> NOTE: Add ~/.local/bin to your PATH by adding this line to ~/.bashrc or ~/.zshrc:"
-    echo "   export PATH=\"\$HOME/.local/bin:\$PATH\""
-fi
+case ":$PATH:" in
+    *":${BIN_DIR}:"*) ;;
+    *)
+        echo ">> NOTE: Add ~/.local/bin to your PATH by adding this line to ~/.bashrc or ~/.zshrc:"
+        echo "   export PATH=\"\$HOME/.local/bin:\$PATH\""
+        ;;
+esac
 
 echo ""
 echo "================================================================="
