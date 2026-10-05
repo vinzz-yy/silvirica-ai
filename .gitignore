@@ -1,27 +1,144 @@
-# Byte-compiled / optimized / DLL files
+# ==============================================================================
+# SILVIRICA AI — COMPREHENSIVE REPOSITORY GITIGNORE
+# Prevents sensitive credentials, runtime caches, databases, and IDE files
+# from ever being committed to GitHub.
+# ==============================================================================
+
+# ------------------------------------------------------------------------------
+# 1. Credentials, Environment Variables & Secrets (CRITICAL)
+# ------------------------------------------------------------------------------
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+*.cert
+*.crt
+*.pfx
+*.p12
+*.pkcs12
+*id_rsa*
+*id_ed25519*
+*credentials.json
+*service_account.json
+*client_secret*.json
+*.token
+auth.json
+secrets.yaml
+secrets.json
+.silvirica/secrets.yaml
+.silvirica/config.local.yaml
+
+# ------------------------------------------------------------------------------
+# 2. Silvirica AI Runtime Caches, Databases & Ephemeral State
+# ------------------------------------------------------------------------------
+.silvirica/cache/
+.silvirica/metrics/
+.silvirica/index/
+.silvirica/graph/*.db
+.silvirica/symbols/*.db
+.silvirica/state/*
+!.silvirica/state/.gitkeep
+!.silvirica/knowledge/.gitkeep
+!.silvirica/security/.gitkeep
+!.silvirica/skills/.gitkeep
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# ------------------------------------------------------------------------------
+# 3. Python Bytecode, Caches & Packaging
+# ------------------------------------------------------------------------------
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
 
-# Caches and virtual environments
-.pytest_cache/
-.coverage
-htmlcov/
+# ------------------------------------------------------------------------------
+# 4. Virtual Environments
+# ------------------------------------------------------------------------------
 .venv/
 venv/
 env/
-.env
+ENV/
+env.bak/
+venv.bak/
+.venv.bak/
 
-# Silvirica project brain runtime caches & databases
-.silvirica/cache/
-.silvirica/metrics/
-.silvirica/graph/*.db
-.silvirica/symbols/*.db
-.silvirica/index/file_hashes.json
+# ------------------------------------------------------------------------------
+# 5. Testing, Coverage & Profiling
+# ------------------------------------------------------------------------------
+.pytest_cache/
+.coverage
+.coverage.*
+htmlcov/
+.tox/
+.nox/
+.hypothesis/
+coverage.xml
+*.cover
+*.py,cover
+.mutmut-cache/
 
-# OS files
+# ------------------------------------------------------------------------------
+# 6. IDEs, Editors & AI Agent State
+# ------------------------------------------------------------------------------
+.idea/
+.vscode/
+!.vscode/settings.json.example
+!.vscode/extensions.json
+.cursor/
+.windsurf/
+.zed/
+*.swp
+*.swo
+*~
+*.sublime-workspace
+*.sublime-project
+
+# ------------------------------------------------------------------------------
+# 7. Operating System Ephemeral Files
+# ------------------------------------------------------------------------------
 .DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
 Thumbs.db
-*.tmp
+desktop.ini
+
+# ------------------------------------------------------------------------------
+# 8. Logs, Temporary & Scratch Files
+# ------------------------------------------------------------------------------
 *.log
+logs/
+tmp/
+temp/
+scratch/
+*.tmp
+*.bak
+*.swp
+*.old
+*.pid
