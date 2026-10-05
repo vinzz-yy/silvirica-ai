@@ -4,8 +4,10 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
-import yaml
-from silvirica.skills.registry import SkillDefinition
+
+from silvirica.core import yaml_compat
+from silvirica.security.sandbox import PathSandbox
+from silvirica.skills.registry import SkillCapabilities, SkillDefinition, SkillTrustTier
 
 
 @dataclass
@@ -44,6 +46,8 @@ BUILTIN_SKILLS: Dict[str, SkillDefinition] = {
         summary="Write minimal, robust, idiomatic code.",
         instructions="1. Read symbol signatures.\n2. Make surgical edits.\n3. Maintain strict type safety.",
         tools=["symbol_index", "ast_search", "git_diff"], knowledge=["SOLID", "Clean Code"],
+        trust_tier=SkillTrustTier.BUILTIN,
+        capabilities=SkillCapabilities(filesystem="read", network=False, shell=False, memory="read", git="read"),
     ),
     "debugging": SkillDefinition(
         name="debugging", version="1.0.0",
@@ -52,6 +56,8 @@ BUILTIN_SKILLS: Dict[str, SkillDefinition] = {
         priority="high", summary="Isolate failure root causes, check failure memory.",
         instructions="1. Retrieve past failure memory.\n2. Inspect stack trace.\n3. Verify fix.",
         tools=["failure_memory", "symbol_index", "test_runner"], knowledge=["Root Cause Analysis", "Fault Localization"],
+        trust_tier=SkillTrustTier.BUILTIN,
+        capabilities=SkillCapabilities(filesystem="read", network=False, shell=False, memory="read", git="read"),
     ),
     "security-audit": SkillDefinition(
         name="security-audit", version="1.0.0",
@@ -60,6 +66,8 @@ BUILTIN_SKILLS: Dict[str, SkillDefinition] = {
         priority="critical", summary="Detect OWASP vulnerabilities.",
         instructions="1. Scan input boundaries.\n2. Audit authorization logic.\n3. Ensure secrets are redacted against OWASP Top 10.",
         tools=["security_scanner", "secret_scanner"], knowledge=["OWASP Top 10", "CWE"],
+        trust_tier=SkillTrustTier.BUILTIN,
+        capabilities=SkillCapabilities(filesystem="read", network=False, shell=False, memory="read", git="none"),
     ),
     "ui-ux-pro": SkillDefinition(
         name="ui-ux-pro", version="1.0.0",
@@ -68,6 +76,8 @@ BUILTIN_SKILLS: Dict[str, SkillDefinition] = {
         priority="medium", summary="Engineer responsive, accessible, consistent UI.",
         instructions="1. Check design tokens.\n2. Ensure WCAG 2.1 AA accessibility.",
         tools=["design_system_analyzer", "css_inspector"], knowledge=["WCAG 2.1", "Responsive Design"],
+        trust_tier=SkillTrustTier.BUILTIN,
+        capabilities=SkillCapabilities(filesystem="read", network=False, shell=False, memory="none", git="none"),
     ),
     "database": SkillDefinition(
         name="database", version="1.0.0",
@@ -76,6 +86,8 @@ BUILTIN_SKILLS: Dict[str, SkillDefinition] = {
         priority="high", summary="Optimize relational queries and guard migrations.",
         instructions="1. Block automatic destructive alterations.\n2. Index frequently queried columns.",
         tools=["schema_inspector", "query_analyzer"], knowledge=["SQL Indexing", "Query Plans"],
+        trust_tier=SkillTrustTier.BUILTIN,
+        capabilities=SkillCapabilities(filesystem="read", network=False, shell=False, memory="none", git="none"),
     ),
     "architecture": SkillDefinition(
         name="architecture", version="1.0.0",
@@ -84,6 +96,8 @@ BUILTIN_SKILLS: Dict[str, SkillDefinition] = {
         priority="high", summary="Maintain modular boundaries and record ADRs.",
         instructions="1. Inspect graph dependencies.\n2. Record decisions in memory.",
         tools=["graph_engine", "decision_memory"], knowledge=["Hexagonal Architecture", "Clean Architecture"],
+        trust_tier=SkillTrustTier.BUILTIN,
+        capabilities=SkillCapabilities(filesystem="read", network=False, shell=False, memory="read", git="read"),
     ),
     "performance": SkillDefinition(
         name="performance", version="1.0.0",
@@ -92,6 +106,8 @@ BUILTIN_SKILLS: Dict[str, SkillDefinition] = {
         priority="medium", summary="Profile hot paths and maximize cache efficiency.",
         instructions="1. Measure before optimizing.\n2. Implement caching.",
         tools=["telemetry_store", "profiler"], knowledge=["Time/Space Complexity"],
+        trust_tier=SkillTrustTier.BUILTIN,
+        capabilities=SkillCapabilities(filesystem="read", network=False, shell=False, memory="none", git="none"),
     ),
     "testing": SkillDefinition(
         name="testing", version="1.0.0",
@@ -100,6 +116,8 @@ BUILTIN_SKILLS: Dict[str, SkillDefinition] = {
         priority="medium", summary="Build reliable unit and integration tests.",
         instructions="1. Test happy paths and failure modes.\n2. Avoid brittle mocks.",
         tools=["test_runner"], knowledge=["TDD", "Unit Testing"],
+        trust_tier=SkillTrustTier.BUILTIN,
+        capabilities=SkillCapabilities(filesystem="read", network=False, shell=False, memory="none", git="none"),
     ),
     "git": SkillDefinition(
         name="git", version="1.0.0",
@@ -108,6 +126,8 @@ BUILTIN_SKILLS: Dict[str, SkillDefinition] = {
         priority="low", summary="Track diffs and produce clean atomic commits.",
         instructions="1. Inspect diffs before committing.\n2. Never commit secrets.",
         tools=["git_watcher"], knowledge=["Conventional Commits"],
+        trust_tier=SkillTrustTier.BUILTIN,
+        capabilities=SkillCapabilities(filesystem="read", network=False, shell=False, memory="none", git="read"),
     ),
     "research": SkillDefinition(
         name="research", version="1.0.0",
@@ -116,6 +136,8 @@ BUILTIN_SKILLS: Dict[str, SkillDefinition] = {
         priority="medium", summary="Ground technical decisions in repository evidence.",
         instructions="1. Gather references.\n2. Check verified project memory.",
         tools=["graph_search", "memory_vault"], knowledge=["Evidence Grounding"],
+        trust_tier=SkillTrustTier.BUILTIN,
+        capabilities=SkillCapabilities(filesystem="read", network=False, shell=False, memory="read", git="read"),
     ),
     "planning": SkillDefinition(
         name="planning", version="1.0.0",
@@ -124,6 +146,8 @@ BUILTIN_SKILLS: Dict[str, SkillDefinition] = {
         priority="high", summary="Break complex features into verifiable tasks.",
         instructions="1. Define affected files.\n2. State explicit verification criteria.",
         tools=["impact_analyzer", "graph_db"], knowledge=["Structured Task Breakdown"],
+        trust_tier=SkillTrustTier.BUILTIN,
+        capabilities=SkillCapabilities(filesystem="read", network=False, shell=False, memory="read", git="read"),
     ),
 }
 
@@ -131,7 +155,7 @@ BUILTIN_SKILLS: Dict[str, SkillDefinition] = {
 class SkillLoader:
     """
     Intelligent Progressive Skill Loader 2.0 with manifest caching,
-    performance tracking, overlap deduplication, and 0-3 lazy ranking budget.
+    trust tier classification, capability sandboxing, and overlap deduplication.
     """
 
     def __init__(self, custom_skills_dir: Optional[Path] = None):
@@ -143,62 +167,68 @@ class SkillLoader:
 
     def _load_all_skill_sources(self) -> None:
         if self.custom_skills_dir and self.custom_skills_dir.exists():
-            self._scan_skill_directory(self.custom_skills_dir)
+            self._scan_skill_directory(self.custom_skills_dir, trust_tier=SkillTrustTier.LOCAL)
 
         root_skills = Path(__file__).resolve().parent.parent.parent / "skills"
         if root_skills.exists():
-            self._scan_skill_directory(root_skills)
+            self._scan_skill_directory(root_skills, trust_tier=SkillTrustTier.COMMUNITY)
 
-    def _scan_skill_directory(self, base_dir: Path) -> None:
+    def _scan_skill_directory(self, base_dir: Path, trust_tier: SkillTrustTier = SkillTrustTier.COMMUNITY) -> None:
         try:
             for item in base_dir.iterdir():
                 if item.is_dir():
                     skill_md = item / "SKILL.md"
                     if skill_md.exists():
-                        self._parse_skill_md(skill_md, item.name)
+                        self._parse_skill_md(skill_md, item.name, trust_tier=trust_tier)
                 elif item.is_file() and item.suffix in [".yaml", ".yml"]:
-                    self._parse_skill_yaml(item)
+                    self._parse_skill_yaml(item, trust_tier=trust_tier)
         except Exception:
             pass
 
-    def _parse_skill_yaml(self, path: Path) -> None:
+    def _parse_skill_yaml(self, path: Path, trust_tier: SkillTrustTier = SkillTrustTier.COMMUNITY) -> None:
         try:
             with open(path, "r", encoding="utf-8") as f:
-                data = yaml.safe_load(f)
+                data = yaml_compat.safe_load(f)
                 if isinstance(data, dict) and "name" in data:
-                    name = data["name"]
+                    name = str(data["name"])
+                    caps = SkillCapabilities.from_dict(data.get("capabilities", {}))
                     self.skills[name] = SkillDefinition(
                         name=name,
                         version=str(data.get("version", "1.0.0")),
-                        description=data.get("description", ""),
-                        triggers=data.get("triggers", []),
-                        priority=data.get("priority", "medium"),
-                        summary=data.get("summary", ""),
-                        instructions=data.get("instructions", ""),
-                        tools=data.get("tools", []),
-                        knowledge=data.get("knowledge", []),
+                        description=str(data.get("description", "")),
+                        triggers=list(data.get("triggers", [])),
+                        priority=str(data.get("priority", "medium")),
+                        summary=str(data.get("summary", "")),
+                        instructions=str(data.get("instructions", "")),
+                        tools=list(data.get("tools", [])),
+                        knowledge=list(data.get("knowledge", [])),
+                        trust_tier=trust_tier,
+                        capabilities=caps,
                     )
         except Exception:
             pass
 
-    def _parse_skill_md(self, path: Path, folder_name: str) -> None:
+    def _parse_skill_md(self, path: Path, folder_name: str, trust_tier: SkillTrustTier = SkillTrustTier.COMMUNITY) -> None:
         try:
             raw = path.read_text(encoding="utf-8-sig", errors="ignore").strip()
             if raw.startswith("---"):
                 parts = raw.split("---", 2)
                 if len(parts) >= 3:
-                    fm = yaml.safe_load(parts[1]) or {}
+                    fm = yaml_compat.safe_load(parts[1]) or {}
+                    if not isinstance(fm, dict):
+                        fm = {}
                     body = parts[2].strip()
                     name = str(fm.get("name", folder_name)).strip('"\'')
                     desc = str(fm.get("description", ""))
                     triggers = [folder_name, name]
                     if "triggers" in fm and isinstance(fm["triggers"], list):
-                        triggers.extend(fm["triggers"])
+                        triggers.extend([str(t) for t in fm["triggers"]])
                     elif "use when the user says:" in desc.lower():
                         clause = desc.lower().split("use when the user says:")[-1]
                         triggers.extend([t.strip().rstrip(".").strip('"\'') for t in clause.split(",") if t.strip()])
 
                     summary = desc[:200] if desc else f"Specialized skill for {name}."
+                    caps = SkillCapabilities.from_dict(fm.get("capabilities", {}))
                     self.skills[name] = SkillDefinition(
                         name=name,
                         version="1.0.0",
@@ -209,6 +239,8 @@ class SkillLoader:
                         instructions=body[:3000],
                         tools=["symbol_index", "context_compiler"],
                         knowledge=[],
+                        trust_tier=trust_tier,
+                        capabilities=caps,
                     )
                     self._lazy_paths[name] = path
             else:
@@ -222,6 +254,8 @@ class SkillLoader:
                     instructions=raw[:3000],
                     tools=["symbol_index", "context_compiler"],
                     knowledge=[],
+                    trust_tier=trust_tier,
+                    capabilities=SkillCapabilities(filesystem="read", network=False, shell=False, memory="none", git="none"),
                 )
                 self._lazy_paths[folder_name] = path
         except Exception:
@@ -249,7 +283,6 @@ class SkillLoader:
             matches = [t for t in skill.triggers if t in query_lower]
             if matches:
                 score = len(matches) * 10 + priority_weight.get(skill.priority, 1)
-                # Boost if historically high success rate
                 perf = self._performance.get(name)
                 if perf and perf.usage_count > 0:
                     score += int(perf.success_rate * 5)
@@ -267,7 +300,7 @@ class SkillLoader:
         for name in skill_names:
             skill = self.get_skill(name)
             if skill:
-                summaries.append(f"### Skill: {skill.name}\n{skill.summary}")
+                summaries.append(f"### Skill: {skill.name} [{skill.trust_tier.value}]\n{skill.summary}")
         return "\n\n".join(summaries)
 
     def load_skills_level2(self, skill_names: List[str]) -> str:
@@ -275,7 +308,7 @@ class SkillLoader:
         for name in skill_names:
             skill = self.get_skill(name)
             if skill:
-                instructions.append(f"### Skill: {skill.name}\n{skill.instructions}\nTools: {', '.join(skill.tools)}")
+                instructions.append(f"### Skill: {skill.name} [{skill.trust_tier.value}]\n{skill.instructions}\nTools: {', '.join(skill.tools)}")
         return "\n\n".join(instructions)
 
     def record_performance(self, skill_name: str, success: bool, latency_sec: float = 0.0, tokens: int = 0) -> None:

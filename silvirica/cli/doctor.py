@@ -139,14 +139,31 @@ class SilviricaDoctor:
         # 15. MCP Protocol
         diagnostics["MCP Protocol"] = {"status": "OK", "detail": "14 Universal MCP Tools registered (stdio ready)"}
 
-        # 16. AI Provider Mode
+        # 16. JEV Decision Capability
+        try:
+            from silvirica.capabilities.jev import JEVCapability
+            from silvirica.core.config import load_config
+            cfg = load_config(self.root_path)
+            jev_cap = JEVCapability.get_instance(config=cfg.jev, project_config=cfg)
+            status_info = jev_cap.get_status()
+            cb_state = status_info["circuit_breaker"]["state"]
+            jev_mode = status_info["mode"]
+            api_status = "Remote & Local" if status_info["api_key_configured"] else "Local System One"
+            diagnostics["JEV Intelligence"] = {
+                "status": "OK" if status_info["enabled"] and cb_state == "CLOSED" else "INFO",
+                "detail": f"Status: {status_info['status']} | Mode: {jev_mode.title()} ({api_status}) | Breaker: {cb_state}",
+            }
+        except Exception as e:
+            diagnostics["JEV Intelligence"] = {"status": "WARN", "detail": f"Native fallback active ({str(e)})"}
+
+        # 17. AI Provider Mode
         has_key = bool(os.environ.get("OPENAI_API_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
         diagnostics["AI Provider"] = {
             "status": "OK" if has_key else "INFO",
             "detail": "Cloud API Key configured" if has_key else "Local Deterministic Fallback Mode active",
         }
 
-        # 17. Workspace Permissions
+        # 18. Workspace Permissions
         writable = os.access(str(self.root_path), os.W_OK)
         diagnostics["Permissions"] = {
             "status": "OK" if writable else "ERROR",

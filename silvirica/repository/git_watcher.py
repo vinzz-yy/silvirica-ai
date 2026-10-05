@@ -3,7 +3,16 @@ import subprocess
 from pathlib import Path
 from typing import List
 
+from silvirica.security.sandbox import PathSandbox
+
+
 class GitWatcher:
+    """
+    Safe Git Integration Engine with process timeouts and path boundary checks.
+    """
+
+    SUBPROCESS_TIMEOUT_SECONDS: float = 10.0
+
     def __init__(self, root_path: Path):
         self.root_path = root_path.resolve()
 
@@ -20,6 +29,7 @@ class GitWatcher:
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=self.SUBPROCESS_TIMEOUT_SECONDS,
             )
             if result.returncode != 0:
                 return []
@@ -30,9 +40,12 @@ class GitWatcher:
                     continue
                 parts = line.split(maxsplit=1)
                 if len(parts) == 2:
-                    files.append(parts[1].strip('"'))
+                    raw_file = parts[1].strip('"')
+                    # Sanitize filename
+                    if PathSandbox.is_safe_path(raw_file, self.root_path):
+                        files.append(raw_file)
             return files
-        except Exception:
+        except (subprocess.TimeoutExpired, Exception):
             return []
 
     def get_diff_summary(self, max_files: int = 10) -> str:
@@ -45,7 +58,10 @@ class GitWatcher:
                 capture_output=True,
                 text=True,
                 check=False,
+                timeout=self.SUBPROCESS_TIMEOUT_SECONDS,
             )
             return result.stdout.strip() or "No uncommitted changes."
+        except subprocess.TimeoutExpired:
+            return "Git diff timed out."
         except Exception:
             return "Could not retrieve git diff."

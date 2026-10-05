@@ -6,7 +6,9 @@ from typing import Any, Dict, List, Optional
 from silvirica.cache.engine import MultiTierCacheManager
 from silvirica.cli.doctor import SilviricaDoctor
 from silvirica.context.compiler import SmartContextCompiler
+from silvirica.context.redactor import SecretRedactor, SecurityMode
 from silvirica.core.config import load_config
+from silvirica.core.exceptions import SecurityViolationError
 from silvirica.core.project import ProjectBrain
 from silvirica.core.types import ComplexityLevel
 from silvirica.graph.graph_db import GraphDatabase
@@ -20,16 +22,35 @@ from silvirica.observatory.telemetry import TelemetryStore
 from silvirica.repository.detector import ProjectDetector
 from silvirica.repository.git_watcher import GitWatcher
 from silvirica.repository.symbols import SymbolIndex
+from silvirica.security.audit_logger import SecurityAuditLogger
 from silvirica.security.engine import SecurityEngine
+from silvirica.security.sandbox import PathSandbox
 from silvirica.skills.loader import SkillLoader
 
 
 class MCPToolRegistry:
     """
-    Implements the 14 Universal MCP Tools for AI Assistants & IDEs.
-    Seamlessly integrates with multi-tier caching, deep dependency graphs,
-    and progressive skills.
+    Implements the 14 Universal MCP Tools for AI Assistants & IDEs with
+    Strict Input Validation, Path Sandboxing, Output Secret Redaction, and Audit Logging.
     """
+
+    # Tool Risk Classification (Requirement #6)
+    TOOL_RISK_RATINGS = {
+        "silvirica_project": "LOW",
+        "silvirica_search": "LOW",
+        "silvirica_symbol": "LOW",
+        "silvirica_graph": "LOW",
+        "silvirica_memory": "LOW",
+        "silvirica_recall": "LOW",
+        "silvirica_skill": "LOW",
+        "silvirica_security": "MEDIUM",
+        "silvirica_context": "LOW",
+        "silvirica_route": "LOW",
+        "silvirica_impact": "LOW",
+        "silvirica_git": "MEDIUM",
+        "silvirica_stats": "LOW",
+        "silvirica_health": "LOW",
+    }
 
     def __init__(self, root_path: Path):
         self.root_path = root_path.resolve()
@@ -47,6 +68,7 @@ class MCPToolRegistry:
         self.impact_analyzer = ImpactAnalyzer(self.graph_db)
         self.telemetry = TelemetryStore(self.brain.metrics_dir / "telemetry.db")
         self.model_router = ModelRouter(self.config, cache_manager=self.cache)
+        self.audit_logger = SecurityAuditLogger(self.root_path)
 
     def get_tool_definitions(self) -> List[Dict[str, Any]]:
         return [
@@ -177,12 +199,38 @@ class MCPToolRegistry:
         ]
 
     def call_tool(self, name: str, arguments: Dict[str, Any]) -> Any:
+        # Validate arguments dictionary
+        if not isinstance(arguments, dict):
+            arguments = {}
+
+        self.audit_logger.log_event(
+            event_type=SecurityAuditLogger.EVENT_MCP_REQUEST,
+            action=name,
+            status="START",
+            details={"arguments": arguments, "risk_rating": self.TOOL_RISK_RATINGS.get(name, "MEDIUM")},
+        )
+
+        try:
+            result = self._execute_tool_internal(name, arguments)
+            sanitized_result = self._sanitize_tool_output(result)
+            return sanitized_result
+        except Exception as e:
+            self.audit_logger.log_event(
+                event_type=SecurityAuditLogger.EVENT_MCP_REQUEST,
+                action=name,
+                status="ERROR",
+                severity="HIGH" if isinstance(e, SecurityViolationError) else "WARN",
+                details={"error": str(e)},
+            )
+            raise
+
+    def _execute_tool_internal(self, name: str, arguments: Dict[str, Any]) -> Any:
         if name == "silvirica_project":
             detector = ProjectDetector(self.root_path)
             return detector.detect()
 
         elif name == "silvirica_search":
-            query = arguments.get("query", "")
+            query = str(arguments.get("query", ""))[:500]
             symbols = self.symbol_index.find_by_name(query, exact=False)[:10]
             memories = self.vault.search(query)[:5]
             return {
@@ -194,8 +242,8 @@ class MCPToolRegistry:
             }
 
         elif name == "silvirica_symbol":
-            name_arg = arguments.get("name", "")
-            exact = arguments.get("exact", False)
+            name_arg = str(arguments.get("name", ""))[:200]
+            exact = bool(arguments.get("exact", False))
             symbols = self.symbol_index.find_by_name(name_arg, exact=exact)
             return [
                 {
@@ -213,17 +261,17 @@ class MCPToolRegistry:
             ]
 
         elif name == "silvirica_graph":
-            query = arguments.get("query", "")
+            query = str(arguments.get("query", ""))[:200]
             return self.graph_query.query_subgraph(query)
 
         elif name == "silvirica_memory":
-            query = arguments.get("query", "")
+            query = str(arguments.get("query", ""))[:500]
             records = self.vault.search(query)
             return [{"title": r.title, "content": r.content, "tags": r.tags, "wikilinks": r.wikilinks} for r in records]
 
         elif name == "silvirica_recall":
-            topic = arguments.get("topic", "")
-            m_type = arguments.get("type", "all")
+            topic = str(arguments.get("topic", ""))[:500]
+            m_type = str(arguments.get("type", "all")).lower()
             res: Dict[str, Any] = {}
             if m_type in ["decision", "all"]:
                 res["decisions"] = self.decisions.get_decisions()
@@ -232,30 +280,43 @@ class MCPToolRegistry:
             return res
 
         elif name == "silvirica_skill":
-            skill_name = arguments.get("skill_name", "")
-            level = arguments.get("level", 2)
+            skill_name = str(arguments.get("skill_name", ""))[:100]
+            level = int(arguments.get("level", 2))
             skill = self.skill_loader.load_skill(skill_name)
             if not skill:
                 return {"error": f"Skill '{skill_name}' not found."}
             if level == 1:
-                return {"name": skill.name, "summary": skill.summary, "tools": skill.tools}
-            return {"name": skill.name, "instructions": skill.instructions, "tools": skill.tools, "knowledge": skill.knowledge}
+                return {"name": skill.name, "summary": skill.summary, "tools": skill.tools, "trust_tier": skill.trust_tier.value}
+            return {
+                "name": skill.name,
+                "instructions": skill.instructions,
+                "tools": skill.tools,
+                "knowledge": skill.knowledge,
+                "trust_tier": skill.trust_tier.value,
+                "capabilities": skill.capabilities.to_dict(),
+            }
 
         elif name == "silvirica_security":
             file_path = arguments.get("file_path")
             if file_path:
                 try:
-                    p = (self.root_path / file_path).resolve()
-                    if not p.is_relative_to(self.root_path):
-                        return [{"severity": "HIGH", "category": "PATH_TRAVERSAL", "message": "Access denied: file path must be within the project workspace."}]
+                    p = PathSandbox.resolve_safe_path(str(file_path), self.root_path)
+                except SecurityViolationError as sve:
+                    self.audit_logger.log_event(
+                        event_type=SecurityAuditLogger.EVENT_PATH_BLOCKED,
+                        action="silvirica_security",
+                        severity="HIGH",
+                        details={"path": str(file_path), "reason": str(sve)},
+                    )
+                    return [{"severity": "HIGH", "category": "PATH_TRAVERSAL", "message": "Access denied: file path must be within the project workspace."}]
                 except Exception:
                     return [{"severity": "HIGH", "category": "INVALID_PATH", "message": "Invalid file path specified."}]
 
                 from silvirica.security.secret_scanner import SecretScanner
                 from silvirica.security.rules import scan_code_for_vulnerabilities
-                findings = SecretScanner.scan_file(p, file_path)
-                if p.exists() and p.is_file():
-                    findings.extend(scan_code_for_vulnerabilities(p.read_text(encoding="utf-8", errors="ignore"), file_path))
+                findings = SecretScanner.scan_file(p, str(file_path))
+                if p.exists() and p.is_file() and not PathSandbox.is_binary_file(p) and PathSandbox.check_file_size_limit(p):
+                    findings.extend(scan_code_for_vulnerabilities(p.read_text(encoding="utf-8", errors="ignore"), str(file_path)))
                 return [f.to_dict() for f in findings]
             scan_res = self.security_engine.scan_repository()
             return {
@@ -266,8 +327,8 @@ class MCPToolRegistry:
             }
 
         elif name == "silvirica_context":
-            task = arguments.get("task", "")
-            complexity_str = arguments.get("complexity", "STANDARD")
+            task = str(arguments.get("task", ""))[:2000]
+            complexity_str = str(arguments.get("complexity", "STANDARD"))
             complexity = ComplexityLevel.from_str(complexity_str)
             compiler = SmartContextCompiler(self.config, cache_manager=self.cache)
             syms = [f"[{s.file_path}:{s.start_line}] {s.name}" for s in self.symbol_index.find_by_name(task)[:5]]
@@ -282,22 +343,28 @@ class MCPToolRegistry:
             }
 
         elif name == "silvirica_route":
-            task = arguments.get("task", "")
-            risk = arguments.get("risk", "SAFE")
-            from silvirica.fastgate.classifier import TaskClassifier
-            clf = TaskClassifier.classify(task)
-            category = self.model_router.select_category(clf["complexity"], clf["intent"], risk)
-            model = self.model_router.get_model_for_category(category)
+            task = str(arguments.get("task", ""))[:2000]
+            risk = str(arguments.get("risk", "SAFE"))
+            from silvirica.capabilities.jev import JEVCapability
+            jev_cap = JEVCapability.get_instance(config=self.config.jev, project_config=self.config)
+            jev_dec = jev_cap.route(task)
+            model = jev_cap.select_model(task)
             return {
-                "category": category.value,
+                "category": jev_dec.route,
+                "complexity": jev_dec.complexity.value.upper(),
+                "execution_path": jev_dec.execution_path.value,
                 "model": model,
-                "complexity": clf["complexity"].name,
-                "intent": clf["intent"],
-                "reasoning_budget_tokens": clf["reasoning_budget"],
+                "model_tier": jev_dec.model_tier.value,
+                "skills_recommended": jev_dec.skills,
+                "context_budget_tokens": jev_dec.context_budget,
+                "confidence": round(jev_dec.confidence, 3),
+                "deep_reasoning": jev_dec.deep_reasoning,
+                "decision_source": jev_dec.source,
+                "latency_ms": round(jev_dec.latency_ms, 2),
             }
 
         elif name == "silvirica_impact":
-            node_id = arguments.get("node_id", "")
+            node_id = str(arguments.get("node_id", ""))[:500]
             return self.impact_analyzer.analyze_impact(node_id)
 
         elif name == "silvirica_git":
@@ -316,3 +383,13 @@ class MCPToolRegistry:
 
         else:
             raise ValueError(f"Unknown tool: {name}")
+
+    def _sanitize_tool_output(self, output: Any) -> Any:
+        if isinstance(output, str):
+            clean, _ = SecretRedactor.redact(output, mode=SecurityMode.BALANCED)
+            return clean
+        elif isinstance(output, dict):
+            return {k: self._sanitize_tool_output(v) for k, v in output.items()}
+        elif isinstance(output, list):
+            return [self._sanitize_tool_output(item) for item in output]
+        return output

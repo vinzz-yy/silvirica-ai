@@ -3,16 +3,30 @@ from pathlib import Path
 from typing import List
 from silvirica.core.types import FindingSeverity, SecurityFinding
 from silvirica.context.redactor import SECRET_PATTERNS
+from silvirica.security.sandbox import PathSandbox
+
 
 class SecretScanner:
+    """
+    Scans files and strings for potential hardcoded secrets and API keys.
+    """
+
     @classmethod
     def scan_file(cls, file_path: Path, rel_path: str) -> List[SecurityFinding]:
         if not file_path.exists() or not file_path.is_file():
             return []
+        
+        # Protect against multi-GB binaries or huge files
+        if not PathSandbox.check_file_size_limit(file_path):
+            return []
+        if PathSandbox.is_binary_file(file_path):
+            return []
+
         try:
             content = file_path.read_text(encoding="utf-8", errors="ignore")
         except Exception:
             return []
+
         findings: List[SecurityFinding] = []
         lines = content.splitlines()
         for pat_name, pattern in SECRET_PATTERNS:
@@ -21,11 +35,16 @@ class SecretScanner:
                     continue
                 if pattern.search(line):
                     finding = SecurityFinding(
-                        rule_id=f"SEC-SECRET-{pat_name}", title=f"Potential Hardcoded Secret: {pat_name}",
-                        severity=FindingSeverity.CRITICAL, location=f"{rel_path}:{idx}", file_path=rel_path,
-                        line_number=idx, evidence="[SECRET DETECTED - REDACTED]",
+                        rule_id=f"SEC-SECRET-{pat_name}",
+                        title=f"Potential Hardcoded Secret: {pat_name}",
+                        severity=FindingSeverity.CRITICAL,
+                        location=f"{rel_path}:{idx}",
+                        file_path=rel_path,
+                        line_number=idx,
+                        evidence="[SECRET DETECTED - REDACTED]",
                         risk_description="Hardcoded secrets can be compromised.",
-                        recommendation="Store secrets in environment variables.", cwe_id="CWE-798",
+                        recommendation="Store secrets in environment variables.",
+                        cwe_id="CWE-798",
                         owasp_category="A07:2021-Identification and Authentication Failures",
                     )
                     findings.append(finding)

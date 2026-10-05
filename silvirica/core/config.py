@@ -2,14 +2,17 @@ from __future__ import annotations
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional
-import yaml
 from dataclasses import dataclass, field, asdict
+
+from silvirica.core import yaml_compat
+
 
 DEFAULT_IGNORE_PATTERNS = [
     ".git", ".silvirica", ".idea", ".vscode", "__pycache__", "*.pyc",
     "node_modules", "vendor", "dist", "build", ".next", ".nuxt",
     ".turbo", "target", ".venv", "venv", "env", ".pytest_cache", ".coverage", "htmlcov"
 ]
+
 
 @dataclass
 class ProviderConfig:
@@ -18,6 +21,7 @@ class ProviderConfig:
     api_key_env: str = "OPENAI_API_KEY"
     default_model: str = "gpt-4o-mini"
     timeout_seconds: int = 30
+
 
 @dataclass
 class ModelRoutingConfig:
@@ -33,6 +37,7 @@ class ModelRoutingConfig:
     ultrabrain_model: str = "o1"
     local_model: str = "llama3"
 
+
 @dataclass
 class TokenBudgetConfig:
     max_context_tokens: int = 16000
@@ -43,6 +48,7 @@ class TokenBudgetConfig:
     complex_task_max_tokens: int = 6000
     deep_task_max_tokens: int = 12000
 
+
 @dataclass
 class GuardrailsConfig:
     block_destructive_db: bool = True
@@ -50,6 +56,13 @@ class GuardrailsConfig:
     block_migration_auto_edit: bool = True
     require_approval_for_high_risk: bool = True
     secret_redaction_enabled: bool = True
+    security_mode: str = "STANDARD"  # STANDARD, STRICT, DEVELOPMENT
+    audit_logging_enabled: bool = True
+    enforce_skill_sandboxing: bool = True
+
+
+from silvirica.capabilities.jev.schemas import JevConfig
+
 
 @dataclass
 class ProjectConfig:
@@ -64,8 +77,13 @@ class ProjectConfig:
     routing: ModelRoutingConfig = field(default_factory=ModelRoutingConfig)
     token_budget: TokenBudgetConfig = field(default_factory=TokenBudgetConfig)
     guardrails: GuardrailsConfig = field(default_factory=GuardrailsConfig)
+    jev: JevConfig = field(default_factory=JevConfig)
     active_skills: List[str] = field(default_factory=lambda: ["coding-core", "debugging", "security-audit"])
     telemetry_enabled: bool = True
+
+    @property
+    def project_name(self) -> str:
+        return self.name
 
     def to_dict(self) -> Dict[str, Any]:
         return asdict(self)
@@ -78,6 +96,8 @@ class ProjectConfig:
         budget = TokenBudgetConfig(**{k: v for k, v in budget_data.items() if k in TokenBudgetConfig.__annotations__})
         guardrails_data = data.get("guardrails", {})
         guardrails = GuardrailsConfig(**{k: v for k, v in guardrails_data.items() if k in GuardrailsConfig.__annotations__})
+        jev_data = data.get("jev", {})
+        jev = JevConfig.from_dict(jev_data) if isinstance(jev_data, dict) else JevConfig()
         providers_data = data.get("providers", {})
         providers = {}
         for p_name, p_val in providers_data.items():
@@ -96,9 +116,11 @@ class ProjectConfig:
             routing=routing,
             token_budget=budget,
             guardrails=guardrails,
+            jev=jev,
             active_skills=data.get("active_skills", ["coding-core", "debugging", "security-audit"]),
             telemetry_enabled=data.get("telemetry_enabled", True),
         )
+
 
 def get_silvirica_dir(start_path: Optional[Path] = None) -> Path:
     current = (start_path or Path.cwd()).resolve()
@@ -107,6 +129,7 @@ def get_silvirica_dir(start_path: Optional[Path] = None) -> Path:
         if candidate.is_dir():
             return candidate
     return current / ".silvirica"
+
 
 def load_config(root_path: Optional[Path] = None) -> ProjectConfig:
     root = (root_path or Path.cwd()).resolve()
@@ -118,10 +141,13 @@ def load_config(root_path: Optional[Path] = None) -> ProjectConfig:
             return ProjectConfig()
     try:
         with open(config_file, "r", encoding="utf-8") as f:
-            content = yaml.safe_load(f) or {}
-            return ProjectConfig.from_dict(content)
+            content = yaml_compat.safe_load(f) or {}
+            if isinstance(content, dict):
+                return ProjectConfig.from_dict(content)
+            return ProjectConfig()
     except Exception:
         return ProjectConfig()
+
 
 def save_config(config: ProjectConfig, root_path: Optional[Path] = None) -> Path:
     root = (root_path or Path.cwd()).resolve()
@@ -129,5 +155,5 @@ def save_config(config: ProjectConfig, root_path: Optional[Path] = None) -> Path
     silvirica_dir.mkdir(parents=True, exist_ok=True)
     config_file = silvirica_dir / "config.yaml"
     with open(config_file, "w", encoding="utf-8") as f:
-        yaml.safe_dump(config.to_dict(), f, default_flow_style=False, sort_keys=False)
+        yaml_compat.safe_dump(config.to_dict(), f)
     return config_file

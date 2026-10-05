@@ -161,7 +161,24 @@ def execute_ask(
     is_bug_task = any(t in query.lower() for t in ["bug", "error", "fail", "broken", "fix", "issue", "why"])
     git_diff_summary = git_watcher.get_diff_summary() if is_bug_task else None
 
-    active_skills = skill_loader.match_skills(query, max_skills=3)
+    # JEV Decision & Fast Intelligence Layer (TypeSafe System One)
+    jev_decision = None
+    if getattr(config, "jev", None) and config.jev.enabled:
+        try:
+            from silvirica.capabilities.jev import JEVCapability
+            jev_cap = JEVCapability.get_instance(config=config.jev, project_config=config)
+            jev_decision = jev_cap.route(query, state_hash=state_hash)
+            if config.jev.skill_routing and jev_decision.skills:
+                available_skill_names = [sk.name for sk in skill_loader.list_skills()]
+                matched_jev_skills = [s for s in jev_decision.skills if s in available_skill_names]
+                active_skills = matched_jev_skills if matched_jev_skills else skill_loader.match_skills(query, max_skills=2)
+            else:
+                active_skills = skill_loader.match_skills(query, max_skills=3)
+        except Exception:
+            active_skills = skill_loader.match_skills(query, max_skills=3)
+    else:
+        active_skills = skill_loader.match_skills(query, max_skills=3)
+
     skill_instructions = skill_loader.load_skills_level2(active_skills)
 
     # 4. Smart Context Compilation
@@ -179,6 +196,11 @@ def execute_ask(
         state_hash=state_hash,
     )
 
+    # Apply JEV context token budgeting if active
+    effective_token_budget = compiled_bundle.token_budget
+    if jev_decision and config.jev.context_routing and jev_decision.context_budget > 0:
+        effective_token_budget = min(compiled_bundle.token_budget, jev_decision.context_budget)
+
     # 5. Model Routing & Execution
     category = model_router.select_category(
         complexity=gate_decision.complexity,
@@ -189,7 +211,7 @@ def execute_ask(
         category=category,
         prompt=compiled_bundle.prompt,
         system_prompt=f"You are Silvirica AI Runtime Intelligence. Follow these activated skills:\n\n{compiled_bundle.skills_text}",
-        max_tokens=compiled_bundle.token_budget,
+        max_tokens=effective_token_budget,
         task=query,
         state_hash=state_hash,
     )

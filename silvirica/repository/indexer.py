@@ -15,6 +15,7 @@ from silvirica.graph.relations import GraphEdge
 from silvirica.repository.ast_parser import MultiLanguageASTParser
 from silvirica.repository.file_hash import compute_file_hash
 from silvirica.repository.symbols import SymbolIndex
+from silvirica.security.sandbox import PathSandbox
 
 
 class RepositoryIndexer:
@@ -41,8 +42,14 @@ class RepositoryIndexer:
         self.cache = cache_manager or MultiTierCacheManager(self.silvirica_dir / "cache")
 
     def _should_ignore(self, path: Path) -> bool:
-        rel = str(path.relative_to(self.root_path)).replace("\\", "/")
-        parts = rel.split("/")
+        try:
+            rel = str(path.relative_to(self.root_path)).replace("\\", "/")
+            parts = rel.split("/")
+            if len(parts) > PathSandbox.MAX_DIRECTORY_DEPTH:
+                return True
+        except ValueError:
+            return True
+
         for pattern in self.config.ignore_patterns:
             pattern = pattern.replace("\\", "/")
             if any(fnmatch.fnmatch(part, pattern) for part in parts):
@@ -82,9 +89,17 @@ class RepositoryIndexer:
             if item.is_file():
                 if self._should_ignore(item):
                     continue
+                if not PathSandbox.check_file_size_limit(item):
+                    continue
+                if PathSandbox.is_binary_file(item):
+                    continue
+
                 all_files_count += 1
                 if item.suffix.lower() in self.SUPPORTED_EXTENSIONS:
-                    rel_path = str(item.relative_to(self.root_path)).replace("\\", "/")
+                    try:
+                        rel_path = str(item.relative_to(self.root_path)).replace("\\", "/")
+                    except ValueError:
+                        continue
                     curr_hash = compute_file_hash(item)
                     new_hashes[rel_path] = curr_hash
                     if force or prev_hashes.get(rel_path) != curr_hash:
@@ -103,7 +118,10 @@ class RepositoryIndexer:
         symbol_name_to_id: Dict[str, str] = {}
 
         for file_path in files_to_process:
-            rel_path = str(file_path.relative_to(self.root_path)).replace("\\", "/")
+            try:
+                rel_path = str(file_path.relative_to(self.root_path)).replace("\\", "/")
+            except ValueError:
+                continue
             file_node_id = f"file:{rel_path}"
             file_hash = new_hashes.get(rel_path, "")
 
@@ -115,8 +133,6 @@ class RepositoryIndexer:
             cached_ast = self.cache.get(CacheTier.L3_AST, cache_key)
 
             if cached_ast and not force:
-                symbols = [MultiLanguageASTParser.parse_file(file_path, self.root_path)]
-                # fallback or fast load
                 symbols, relations = MultiLanguageASTParser.parse_file_with_relations(file_path, self.root_path)
             else:
                 symbols, relations = MultiLanguageASTParser.parse_file_with_relations(file_path, self.root_path)

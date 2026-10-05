@@ -1,10 +1,12 @@
 """
 Silvirica AI Main CLI Entrypoint.
+Universal AI Intelligence Enhancement Runtime with Security Hardening.
 """
 
 from __future__ import annotations
 import argparse
 import sys
+import time
 from pathlib import Path
 
 from silvirica.benchmark.harness import BenchmarkHarness
@@ -13,7 +15,7 @@ from silvirica.cache.engine import MultiTierCacheManager
 from silvirica.cli.ask import execute_ask
 from silvirica.cli.doctor import SilviricaDoctor
 from silvirica.cli.status import show_status
-from silvirica.core.config import ProjectConfig
+from silvirica.core.config import ProjectConfig, load_config
 from silvirica.core.project import ProjectBrain
 from silvirica.daemon.server import run_daemon
 from silvirica.graph.graph_db import GraphDatabase
@@ -26,6 +28,7 @@ from silvirica.observatory.telemetry import TelemetryStore
 from silvirica.repository.detector import ProjectDetector
 from silvirica.repository.indexer import RepositoryIndexer
 from silvirica.repository.symbols import SymbolIndex
+from silvirica.security.audit_logger import SecurityAuditLogger
 from silvirica.security.engine import SecurityEngine
 from silvirica.skills.loader import SkillLoader
 from silvirica.uiux.design_system import DesignSystemExtractor
@@ -65,7 +68,14 @@ def main() -> None:
     cache_parser.add_argument("--clear", action="store_true", help="Clear all cache tiers")
     cache_parser.add_argument("--stats", action="store_true", help="Show cache hit statistics")
 
-    subparsers.add_parser("security", help="Run defensive security audit")
+    sec_parser = subparsers.add_parser("security", help="Run defensive security audit or check security status")
+    sec_parser.add_argument("action", nargs="?", default="scan", choices=["scan", "status"], help="Action: scan or status (default: scan)")
+    sec_parser.add_argument("--file", type=str, help="Optional specific file to scan")
+
+    audit_parser = subparsers.add_parser("audit", help="Inspect security audit log events")
+    audit_parser.add_argument("--limit", type=int, default=20, help="Number of events to display")
+
+    subparsers.add_parser("permissions", help="Display runtime permission policies and trust tiers")
     subparsers.add_parser("uiux", help="Extract design system tokens and audit UI/UX")
     subparsers.add_parser("benchmark", help="Run before-vs-after benchmark harness")
     subparsers.add_parser("dashboard", help="Render Observatory dashboard")
@@ -73,8 +83,17 @@ def main() -> None:
 
     daemon_parser = subparsers.add_parser("daemon", help="Run local HTTP daemon service")
     daemon_parser.add_argument("--port", type=int, default=7458, help="Port to listen on (default 7458)")
+    daemon_parser.add_argument("--token", type=str, help="Optional custom auth token")
 
     subparsers.add_parser("mcp", help="Run MCP standard I/O server for AI coding assistants")
+
+    jev_parser = subparsers.add_parser("jev", help="JEV Fast-Thinking & Decision Engine intelligence")
+    jev_sub = jev_parser.add_subparsers(dest="jev_command", help="JEV subcommands")
+    jev_sub.add_parser("status", help="Show JEV capability health, circuit breaker state, and metrics")
+    jev_test = jev_sub.add_parser("test", help="Test JEV decision routing on a query")
+    jev_test.add_argument("query", type=str, help="Query to route and classify")
+    jev_sub.add_parser("doctor", help="Run comprehensive diagnostics on JEV connectivity & latency")
+    jev_sub.add_parser("benchmark", help="Run comparative benchmark: Without JEV vs With JEV")
 
     args = parser.parse_args()
 
@@ -157,8 +176,8 @@ def main() -> None:
             skills = loader.list_skills()
             print(f"================ INSTALLED PROGRESSIVE SKILLS ({len(skills)}) ================")
             for s in sorted(skills, key=lambda x: x.name):
-                desc = (s.description[:75] + '...') if len(s.description) > 75 else s.description
-                print(f"- {s.name:<32} [{s.priority.upper():<8}]: {desc}")
+                desc = (s.description[:65] + '...') if len(s.description) > 65 else s.description
+                print(f"- {s.name:<30} [{s.trust_tier.value:<9} | {s.priority.upper():<6}]: {desc}")
             print("=======================================================================")
 
     elif args.command == "memory":
@@ -208,17 +227,53 @@ def main() -> None:
 
     elif args.command == "security":
         engine = SecurityEngine(root)
-        res = engine.scan_repository()
-        print("===================== SECURITY INTELLIGENCE AUDIT =====================")
-        print(f"Files Scanned:   {res['files_scanned']}")
-        print(f"Total Findings:  {res['total_findings']}")
-        print(f"Severity Breakdown: {res['severity_counts']}")
-        print("-----------------------------------------------------------------------")
-        for idx, f in enumerate(res["findings"][:15], 1):
-            print(f"[{f.severity.value}] {f.title} ({f.location})")
-            print(f"  Risk: {f.risk_description}")
-            print(f"  Fix:  {f.recommendation}\n")
-        print("=======================================================================")
+        if args.action == "status":
+            cfg = load_config(root)
+            print("===================== SILVIRICA SECURITY STATUS =====================")
+            print(f"Security Mode:           {cfg.guardrails.security_mode}")
+            print(f"Secret Redaction:        {'ENABLED' if cfg.guardrails.secret_redaction_enabled else 'DISABLED'}")
+            print(f"Destructive DB Block:    {'ENABLED' if cfg.guardrails.block_destructive_db else 'DISABLED'}")
+            print(f"Migration Auto-Edit:     {'BLOCKED' if cfg.guardrails.block_migration_auto_edit else 'ALLOWED'}")
+            print(f"Skill Sandboxing:        {'ENFORCED' if cfg.guardrails.enforce_skill_sandboxing else 'DISABLED'}")
+            print(f"Audit Logging:           {'ACTIVE' if cfg.guardrails.audit_logging_enabled else 'DISABLED'}")
+            print("====================================================================")
+        else:
+            res = engine.scan_repository(target_path=args.file)
+            print("===================== SECURITY INTELLIGENCE AUDIT =====================")
+            print(f"Files Scanned:   {res['files_scanned']}")
+            print(f"Total Findings:  {res['total_findings']}")
+            print(f"Severity Breakdown: {res['severity_counts']}")
+            print("-----------------------------------------------------------------------")
+            for idx, f in enumerate(res["findings"][:15], 1):
+                print(f"[{f.severity.value}] {f.title} ({f.location})")
+                print(f"  Risk: {f.risk_description}")
+                print(f"  Fix:  {f.recommendation}\n")
+            print("=======================================================================")
+
+    elif args.command == "audit":
+        audit = SecurityAuditLogger(root)
+        events = audit.get_recent_events(limit=args.limit)
+        print(f"================ SECURITY AUDIT LOG ({len(events)} events) ================")
+        for ev in events:
+            print(f"[{ev.get('timestamp')}] {ev.get('severity', 'INFO')} | {ev.get('event_type')} - {ev.get('action')} ({ev.get('status')})")
+            if ev.get("details"):
+                print(f"    Details: {ev.get('details')}")
+        print("==========================================================================")
+
+    elif args.command == "permissions":
+        cfg = load_config(root)
+        print("=================== SILVIRICA PERMISSION MATRIX ===================")
+        print("Trust Tier Hierarchy:")
+        print("  1. SYSTEM_POLICY      -> Immutable local runtime rules")
+        print("  2. USER_REQUEST       -> Explicit interactive CLI / IDE commands")
+        print("  3. TRUSTED_SKILL      -> Built-in & Verified skill instructions")
+        print("  4. REPOSITORY_DATA    -> Unprivileged text data (PromptArmor fenced)")
+        print("  5. EXTERNAL_CONTENT   -> Unprivileged network context (SSRF checked)")
+        print("\nGuardrail Capabilities:")
+        print(f"  - Database Mutations: {'Blocked' if cfg.guardrails.block_destructive_db else 'Permitted'}")
+        print(f"  - Migration Edits:    {'Blocked' if cfg.guardrails.block_migration_auto_edit else 'Permitted'}")
+        print(f"  - Secret Mod:         Blocked (.env, id_rsa, credentials.json)")
+        print("===================================================================")
 
     elif args.command == "uiux":
         extractor = DesignSystemExtractor(root)
@@ -244,11 +299,84 @@ def main() -> None:
         print(explainer.explain_last())
 
     elif args.command == "daemon":
-        run_daemon(root, port=args.port)
+        run_daemon(root, port=args.port, auth_token=args.token)
 
     elif args.command == "mcp":
         server = MCPServer(root)
         server.run_stdio()
+
+    elif args.command == "jev":
+        from silvirica.capabilities.jev import JEVCapability
+        from silvirica.capabilities.jev.benchmark import JevBenchmarkHarness
+        cfg = load_config(root)
+        jev_cap = JEVCapability.get_instance(config=cfg.jev, project_config=cfg)
+
+        if not getattr(args, "jev_command", None) or args.jev_command == "status":
+            st = jev_cap.get_status()
+            stats = st["stats"]
+            cb = st["circuit_breaker"]
+            print("==================== JEV CAPABILITY STATUS ====================")
+            print(f"Status:            {st['status']}")
+            print(f"Mode:              {st['mode'].title()}")
+            print(f"Fallback:          Native Router")
+            print(f"Decision Cache:    {'Enabled' if st['enabled'] else 'Disabled'}")
+            print(f"Circuit Breaker:   {cb['state']} ({cb['consecutive_failures']} consecutive fails)")
+            print(f"Total Decisions:   {stats['total_decisions']}")
+            print(f"Average Decision:  {stats['average_latency_ms']} ms")
+            print(f"Cache Hit Rate:    {stats['cache_hit_rate_pct']}%")
+            print(f"Success Rate:      {stats['success_rate_pct']}%")
+            print("===============================================================")
+
+        elif args.jev_command == "test":
+            dec = jev_cap.route(args.query)
+            print("===================== JEV DECISION MATRIX =====================")
+            print(f"Task Query:        {args.query}")
+            print(f"Complexity:        {dec.complexity.value.upper()}")
+            print(f"Execution Path:    {dec.execution_path.value}")
+            print(f"Route:             {dec.route}")
+            print(f"Confidence:        {round(dec.confidence * 100, 1)}%")
+            print(f"Model Tier:        {dec.model_tier.value.upper()} ({jev_cap.select_model(args.query)})")
+            print(f"Skills Selected:   {', '.join(dec.skills)}")
+            print(f"Context Budget:    {dec.context_budget} tokens")
+            print(f"Deep Reasoning:    {'YES' if dec.deep_reasoning else 'NO'}")
+            print(f"Decision Latency:  {round(dec.latency_ms, 2)} ms (Source: {dec.source})")
+            if dec.reasons:
+                print(f"Rationale:         {dec.reasons}")
+            print("===============================================================")
+
+        elif args.jev_command == "doctor":
+            st = jev_cap.get_status()
+            t0 = time.time()
+            test_dec = jev_cap.route("verify system health")
+            lat = round((time.time() - t0) * 1000.0, 2)
+            print("===================== JEV DOCTOR DIAGNOSTICS =====================")
+            print(f"JEV Engine:        {'ACTIVE' if st['enabled'] else 'DISABLED'}")
+            print(f"Remote Endpoint:   {st['provider_endpoint']}")
+            print(f"API Key Present:   {'YES' if st['api_key_configured'] else 'NO (Local System One Mode)'}")
+            print(f"Circuit Breaker:   {st['circuit_breaker']['state']}")
+            print(f"Probe Latency:     {lat} ms")
+            print(f"Latency Budget:    {cfg.jev.timeout_ms} ms ceiling")
+            print(f"Health Status:     {'HEALTHY' if lat < cfg.jev.timeout_ms else 'DEGRADED'}")
+            print("==================================================================")
+
+        elif args.jev_command == "benchmark":
+            harness = JevBenchmarkHarness(runs_per_task=5)
+            print("Running Empirical JEV Benchmark (Baseline vs Silvirica + JEV)...")
+            res = harness.run_benchmark()
+            base = res["baseline_without_jev"]
+            jev_res = res["silvirica_with_jev"]
+            imp = res["comparative_improvements"]
+            
+            print("\n========================= JEV EMPIRICAL BENCHMARK =========================")
+            print(f"{'Metric':<32} | {'Silvirica Without JEV':<24} | {'Silvirica + JEV':<24}")
+            print("-" * 88)
+            print(f"{'Routing Latency (Avg)':<32} | {str(base['avg_routing_latency_ms']) + ' ms':<24} | {str(jev_res['avg_routing_latency_ms']) + ' ms (' + str(imp['routing_latency_reduction_pct']) + '% faster)':<24}")
+            print(f"{'Cached Decision Latency':<32} | {'N/A (No cache)':<24} | {str(jev_res['avg_cached_latency_ms']) + ' ms (' + str(imp['cache_speedup_factor']) + 'x speedup)':<24}")
+            print(f"{'Context Budget (Avg Tokens)':<32} | {str(int(base['avg_context_budget'])) + ' tokens':<24} | {str(int(jev_res['avg_context_budget'])) + ' tokens (-' + str(imp['context_token_savings_pct']) + '%)':<24}")
+            print(f"{'Skills Injected (Avg Count)':<32} | {str(base['avg_skills_loaded']) + ' (All monolithic)':<24} | {str(jev_res['avg_skills_loaded']) + ' (Selective -' + str(imp['skill_context_reduction_pct']) + '%)':<24}")
+            print(f"{'Model Selection Strategy':<32} | {base['model_selection']:<24} | {'Tiered (Fast/Standard/Deep)':<24}")
+            print(f"{'Tasks Evaluated':<32} | {str(res['tasks_evaluated']) + ' tasks':<24} | {str(res['tasks_evaluated']) + ' tasks (' + str(res['total_runs']) + ' runs)':<24}")
+            print("===========================================================================")
 
 
 if __name__ == "__main__":

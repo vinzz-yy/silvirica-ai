@@ -7,6 +7,9 @@ from enum import Enum
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
+from silvirica.context.redactor import SecretRedactor, SecurityMode
+from silvirica.security.sandbox import PathSandbox
+
 
 class CacheTier(str, Enum):
     L1_REQUEST = "L1_REQUEST"
@@ -43,18 +46,12 @@ class CacheEntry:
 
 class MultiTierCacheManager:
     """
-    High-performance, persistent Multi-Tier Caching System for Silvirica AI:
-    - L1: Request Cache (Exact query + state -> direct answer)
-    - L2: Symbol Cache (Symbol name query -> indexed symbols)
-    - L3: AST Cache (File content hash -> parsed AST symbols & relations)
-    - L4: Context Cache (Task + file hashes -> compiled context bundle)
-    - L5: Memory Retrieval Cache (Query -> ranked memory snippets)
-    - L6: Skill Cache (Query intent -> active skill definitions)
-    - L7: Model Response Cache (Prompt hash + model -> verified AI response)
+    High-performance, persistent Multi-Tier Caching System for Silvirica AI with
+    Zero-Secret Leakage Pre-Redaction and Safe Serialization.
     """
 
     def __init__(self, cache_dir: Path, default_ttl_seconds: int = 86400):
-        self.cache_dir = cache_dir
+        self.cache_dir = cache_dir.resolve()
         self.cache_dir.mkdir(parents=True, exist_ok=True)
         self.default_ttl = default_ttl_seconds
         self._memory_cache: Dict[str, CacheEntry] = {}
@@ -91,7 +88,7 @@ class MultiTierCacheManager:
 
         # 2. Check disk persistence tier
         disk_path = self._get_disk_path(tier, key)
-        if disk_path.exists():
+        if disk_path and disk_path.exists():
             try:
                 with open(disk_path, "r", encoding="utf-8") as f:
                     payload = json.load(f)
@@ -130,10 +127,13 @@ class MultiTierCacheManager:
         now = time.time()
         expires_at = now + ttl if ttl > 0 else None
 
+        # Sanitize / Redact data before caching if it contains strings
+        sanitized_data = self._sanitize_cache_data(data)
+
         entry = CacheEntry(
             key=key,
             tier=tier,
-            data=data,
+            data=sanitized_data,
             created_at=now,
             expires_at=expires_at,
             project_state_hash=project_state_hash,
@@ -143,28 +143,36 @@ class MultiTierCacheManager:
         if persist_disk:
             try:
                 disk_path = self._get_disk_path(tier, key)
-                disk_path.parent.mkdir(parents=True, exist_ok=True)
-                with open(disk_path, "w", encoding="utf-8") as f:
-                    json.dump(
-                        {
-                            "key": entry.key,
-                            "tier": entry.tier.value,
-                            "data": entry.data,
-                            "created_at": entry.created_at,
-                            "expires_at": entry.expires_at,
-                            "project_state_hash": entry.project_state_hash,
-                            "hit_count": entry.hit_count,
-                        },
-                        f,
-                        indent=2,
-                    )
+                if disk_path:
+                    disk_path.parent.mkdir(parents=True, exist_ok=True)
+                    with open(disk_path, "w", encoding="utf-8") as f:
+                        json.dump(
+                            {
+                                "key": entry.key,
+                                "tier": entry.tier.value,
+                                "data": entry.data,
+                                "created_at": entry.created_at,
+                                "expires_at": entry.expires_at,
+                                "project_state_hash": entry.project_state_hash,
+                                "hit_count": entry.hit_count,
+                            },
+                            f,
+                            indent=2,
+                        )
             except Exception:
                 pass
 
+    def _sanitize_cache_data(self, data: Any) -> Any:
+        if isinstance(data, str):
+            clean, _ = SecretRedactor.redact(data, mode=SecurityMode.BALANCED)
+            return clean
+        elif isinstance(data, dict):
+            return {k: self._sanitize_cache_data(v) for k, v in data.items()}
+        elif isinstance(data, list):
+            return [self._sanitize_cache_data(item) for item in data]
+        return data
+
     def invalidate_state(self, current_state_hash: str) -> int:
-        """
-        Invalidates all cache entries that do not match the new repository state hash.
-        """
         invalidated_count = 0
         to_delete_mem = []
         for key, entry in self._memory_cache.items():
@@ -224,9 +232,11 @@ class MultiTierCacheManager:
             "tier_hits": self._stats["tier_hits"],
         }
 
-
-    def _get_disk_path(self, tier: CacheTier, key: str) -> Path:
-        return self.cache_dir / tier.value / f"{key}.json"
+    def _get_disk_path(self, tier: CacheTier, key: str) -> Optional[Path]:
+        try:
+            return PathSandbox.resolve_safe_path(f"{tier.value}/{key}.json", self.cache_dir)
+        except Exception:
+            return None
 
     def _evict_memory(self, key: str) -> None:
         if key in self._memory_cache:

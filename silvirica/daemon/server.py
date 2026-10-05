@@ -1,6 +1,8 @@
 from __future__ import annotations
 import json
+import os
 import secrets
+import stat
 from http.server import BaseHTTPRequestHandler, HTTPServer
 from pathlib import Path
 from typing import Any, Dict, Optional, Set, Union
@@ -9,11 +11,15 @@ from urllib.parse import parse_qs, urlparse
 from silvirica.core.config import load_config
 from silvirica.core.project import ProjectBrain
 from silvirica.mcp.tools import MCPToolRegistry
+from silvirica.security.audit_logger import SecurityAuditLogger
 
 
 class SilviricaDaemonHandler(BaseHTTPRequestHandler):
     registry: MCPToolRegistry = None
     auth_token: Optional[str] = None
+    audit_logger: Optional[SecurityAuditLogger] = None
+    MAX_REQUEST_BYTES: int = 5 * 1024 * 1024  # 5 MB payload limit
+
     allowed_origins: Set[str] = {
         "http://localhost",
         "http://127.0.0.1",
@@ -24,6 +30,7 @@ class SilviricaDaemonHandler(BaseHTTPRequestHandler):
     @classmethod
     def _is_origin_allowed(cls, origin: Optional[str]) -> bool:
         if not origin:
+            # If no Origin header is sent (e.g. CLI or backend daemon client), allow only if authenticated
             return True
         try:
             parsed = urlparse(origin)
@@ -36,7 +43,6 @@ class SilviricaDaemonHandler(BaseHTTPRequestHandler):
         return False
 
     def _validate_auth(self) -> bool:
-        # If no auth token configured, allow localhost loopback
         if not self.auth_token:
             return True
 
@@ -50,6 +56,14 @@ class SilviricaDaemonHandler(BaseHTTPRequestHandler):
         if x_token and secrets.compare_digest(x_token, self.auth_token):
             return True
 
+        if self.audit_logger:
+            self.audit_logger.log_event(
+                event_type=SecurityAuditLogger.EVENT_AUTH_FAILURE,
+                action=self.path,
+                status="DENIED",
+                severity="HIGH",
+                details={"client_address": str(self.client_address)},
+            )
         return False
 
     def _set_headers(self, status: int = 200, content_type: str = "application/json") -> None:
@@ -67,6 +81,7 @@ class SilviricaDaemonHandler(BaseHTTPRequestHandler):
         self.send_header("Access-Control-Allow-Headers", "Content-Type, Authorization, X-Silvirica-Token")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("X-Frame-Options", "DENY")
+        self.send_header("Cache-Control", "no-store, no-cache, must-revalidate")
         self.end_headers()
 
     def do_OPTIONS(self) -> None:
@@ -127,16 +142,31 @@ class SilviricaDaemonHandler(BaseHTTPRequestHandler):
 
         parsed = urlparse(self.path)
         path = parsed.path
-        length = int(self.headers.get("Content-Length", 0))
-        body = self.rfile.read(length).decode("utf-8") if length > 0 else "{}"
+        
+        try:
+            length = int(self.headers.get("Content-Length", 0))
+        except (ValueError, TypeError):
+            length = 0
+
+        # Resource exhaustion defense: Payload size check
+        if length > self.MAX_REQUEST_BYTES:
+            self._set_headers(413)
+            self.wfile.write(json.dumps({"error": "Payload Too Large: Request exceeds maximum size limit (5 MB)."}).encode("utf-8"))
+            return
+
+        body = self.rfile.read(length).decode("utf-8", errors="ignore") if length > 0 else "{}"
         try:
             payload = json.loads(body)
+            if not isinstance(payload, dict):
+                payload = {}
         except Exception:
             payload = {}
 
         if path == "/api/tool":
-            tool_name = payload.get("name", "")
+            tool_name = str(payload.get("name", ""))
             args = payload.get("arguments", {})
+            if not isinstance(args, dict):
+                args = {}
             try:
                 result = self.registry.call_tool(tool_name, args)
                 self._set_headers(200)
@@ -146,7 +176,7 @@ class SilviricaDaemonHandler(BaseHTTPRequestHandler):
                 self.wfile.write(json.dumps({"success": False, "error": str(e)}).encode("utf-8"))
 
         elif path == "/api/context":
-            task = payload.get("task", "")
+            task = str(payload.get("task", ""))
             res = self.registry.call_tool("silvirica_context", {"task": task})
             self._set_headers(200)
             self.wfile.write(json.dumps(res).encode("utf-8"))
@@ -175,12 +205,44 @@ def run_daemon(
         eff_port = port
         root = (root_path or Path.cwd()).resolve()
 
+    # Generate or load secure daemon token
+    token_file = root / ".silvirica" / "daemon.token"
+    eff_token = auth_token
+    if not eff_token:
+        if token_file.exists():
+            try:
+                eff_token = token_file.read_text(encoding="utf-8").strip()
+            except Exception:
+                eff_token = secrets.token_urlsafe(32)
+        else:
+            eff_token = secrets.token_urlsafe(32)
+            try:
+                token_file.parent.mkdir(parents=True, exist_ok=True)
+                token_file.write_text(eff_token, encoding="utf-8")
+                try:
+                    os.chmod(token_file, stat.S_IRUSR | stat.S_IWUSR)
+                except Exception:
+                    pass
+            except Exception:
+                pass
+
+    audit = SecurityAuditLogger(root)
     SilviricaDaemonHandler.registry = MCPToolRegistry(root)
-    SilviricaDaemonHandler.auth_token = auth_token
+    SilviricaDaemonHandler.auth_token = eff_token
+    SilviricaDaemonHandler.audit_logger = audit
 
     server_address = ("127.0.0.1", eff_port)
     httpd = HTTPServer(server_address, SilviricaDaemonHandler)
+
+    audit.log_event(
+        event_type=SecurityAuditLogger.EVENT_DAEMON_STARTED,
+        action="startup",
+        status="RUNNING",
+        details={"host": "127.0.0.1", "port": eff_port, "root": str(root)},
+    )
+
     print(f"Silvirica Daemon listening securely on http://127.0.0.1:{eff_port} (Root: {root})")
+    print(f">> Auth Token: {eff_token[:6]}... (Full token stored at .silvirica/daemon.token)")
     try:
         httpd.serve_forever()
     except KeyboardInterrupt:

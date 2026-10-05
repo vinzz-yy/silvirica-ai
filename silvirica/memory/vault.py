@@ -5,7 +5,10 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Set, Tuple
+
+from silvirica.context.redactor import SecretRedactor, SecurityMode
 from silvirica.core.types import MemoryRecord, MemoryStatus, MemoryType
+from silvirica.security.sandbox import PathSandbox
 
 
 @dataclass
@@ -23,22 +26,13 @@ class StructuredMemoryEntry:
     status: str = "active"  # active, superseded, archived
     superseded_by: Optional[str] = None
     tags: List[str] = field(default_factory=list)
-    related_to: List[str] = field(default_factory=list)  # e.g., ["AuthController", "UserService"]
+    related_to: List[str] = field(default_factory=list)
 
 
 class ObsidianMemoryVault:
     """
     Obsidian-compatible Markdown Memory Vault 2.0 with Wikilinks, Tags,
-    Staleness Protection, Semantic Deduplication, and Memory Graph Links.
-    Categories:
-    - Architecture (ADRs, system design)
-    - Decisions (technical trade-offs)
-    - Bugs & Fixes (known pitfalls, root causes)
-    - Conventions (code standards)
-    - Security (boundaries, auth)
-    - Dependencies (package updates)
-    - Sessions (working context)
-    - Discoveries & Glossary
+    Staleness Protection, Semantic Deduplication, Path Sandboxing, and Pre-Persistence Secret Redaction.
     """
 
     WIKILINK_PATTERN = re.compile(r'\[\[([^\]|]+)(?:\|([^\]]+))?\]\]')
@@ -50,7 +44,7 @@ class ObsidianMemoryVault:
     ]
 
     def __init__(self, memory_dir: Path):
-        self.memory_dir = memory_dir
+        self.memory_dir = memory_dir.resolve()
         self.memory_dir.mkdir(parents=True, exist_ok=True)
         self._cache: Dict[str, MemoryRecord] = {}
         self._init_standard_notes()
@@ -63,22 +57,24 @@ class ObsidianMemoryVault:
                 cat_file.write_text(f"# {cat_title}\n\nProject memory records for {cat}.\n", encoding="utf-8")
 
     def _resolve_note_path(self, name: str) -> Optional[Path]:
+        if not name:
+            return None
         clean = re.sub(r'[\/\\:]', '_', name)
         if clean.endswith(".md"):
             clean = clean[:-3]
         clean = clean.strip(". ")
         if not clean:
             return None
-        target = (self.memory_dir / f"{clean}.md").resolve()
+        
+        # Verify with PathSandbox
         try:
-            if not target.is_relative_to(self.memory_dir):
-                return None
+            target = PathSandbox.resolve_safe_path(f"{clean}.md", self.memory_dir)
+            return target
         except Exception:
             return None
-        return target
 
     def list_notes(self) -> List[str]:
-        return sorted([f.stem for f in self.memory_dir.glob("*.md")])
+        return sorted([f.stem for f in self.memory_dir.glob("*.md") if f.is_file()])
 
     def read_note(self, name: str) -> Optional[MemoryRecord]:
         path = self._resolve_note_path(name)
@@ -96,7 +92,6 @@ class ObsidianMemoryVault:
                 title = line.strip()[2:].strip()
                 break
 
-        # Map to MemoryType
         mem_type = MemoryType.PROJECT
         if "decision" in clean_name.lower():
             mem_type = MemoryType.DECISION
@@ -131,7 +126,9 @@ class ObsidianMemoryVault:
         if not path:
             return None
         clean_name = path.stem
-        final_content = content
+        # Pre-redact secrets before persistence
+        clean_content, _ = SecretRedactor.redact(content, mode=SecurityMode.BALANCED)
+        final_content = clean_content
         if tags:
             tag_line = " ".join(f"#{t.lstrip('#')}" for t in tags)
             if tag_line not in final_content:
@@ -145,25 +142,30 @@ class ObsidianMemoryVault:
         if not path:
             return
         clean_name = path.stem
+        # Pre-redact secrets before appending
+        clean_add, _ = SecretRedactor.redact(additional_content, mode=SecurityMode.BALANCED)
         existing = path.read_text(encoding="utf-8") if path.exists() else f"# {clean_name}\n\n"
         
         # Deduplication check: do not append if content already exists verbatim
-        if additional_content.strip() in existing:
+        if clean_add.strip() in existing:
             return
 
-        path.write_text(f"{existing.rstrip()}\n\n{additional_content}\n", encoding="utf-8")
+        path.write_text(f"{existing.rstrip()}\n\n{clean_add}\n", encoding="utf-8")
         self.read_note(clean_name)
 
     def add_structured_entry(self, entry: StructuredMemoryEntry) -> bool:
         """
-        Adds a structured memory entry with deduplication and staleness protection.
+        Adds a structured memory entry with deduplication, staleness protection, and secret redaction.
         """
         target_category = entry.type if entry.type in self.STANDARD_CATEGORIES else "decisions"
         cat_file = self.memory_dir / f"{target_category}.md"
         existing_text = cat_file.read_text(encoding="utf-8", errors="ignore") if cat_file.exists() else ""
 
+        # Pre-redact secrets
+        redacted_content, _ = SecretRedactor.redact(entry.content, mode=SecurityMode.BALANCED)
+
         # Deduplication: check lexical overlap
-        entry_terms = set(re.findall(r'\w+', entry.content.lower()))
+        entry_terms = set(re.findall(r'\w+', redacted_content.lower()))
         if entry_terms:
             existing_lines = [l.lower() for l in existing_text.splitlines() if len(l.strip()) > 10]
             for line in existing_lines:
@@ -180,7 +182,7 @@ class ObsidianMemoryVault:
         block = f"### {entry.id}\n"
         if entry.status == "superseded" and entry.superseded_by:
             block += f"> [!WARNING] Superseded by [[{entry.superseded_by}]]\n\n"
-        block += f"{entry.content.strip()}\n"
+        block += f"{redacted_content.strip()}\n"
         if rel_str:
             block += f"\n- **Related Entities**: {rel_str}\n"
         if tag_str:
@@ -190,9 +192,6 @@ class ObsidianMemoryVault:
         return True
 
     def mark_superseded(self, old_entry_id: str, new_entry_id: str) -> bool:
-        """
-        Staleness protection: marks an existing memory entry as superseded.
-        """
         for path in self.memory_dir.glob("*.md"):
             content = path.read_text(encoding="utf-8", errors="ignore")
             if f"### {old_entry_id}" in content:
@@ -206,9 +205,6 @@ class ObsidianMemoryVault:
         return False
 
     def get_memories_for_symbol(self, symbol_name: str) -> List[MemoryRecord]:
-        """
-        Memory Graph: retrieves all memories linked to a specific code entity (e.g., AuthController).
-        """
         results: List[MemoryRecord] = []
         sym_clean = symbol_name.strip().lower()
         for path in self.memory_dir.glob("*.md"):
@@ -232,7 +228,6 @@ class ObsidianMemoryVault:
             title_lower = record.title.lower()
             tags_lower = [t.lower() for t in record.tags]
 
-            # Staleness filter
             if not include_superseded and "superseded by" in content_lower:
                 if "superseded" not in query_lower:
                     continue
@@ -270,9 +265,6 @@ class ObsidianMemoryVault:
         return sorted(backlinks)
 
     def get_vault_summary(self) -> Dict[str, Any]:
-        """
-        Produces human-readable Obsidian-style vault overview with entry counts per category.
-        """
         categories_stats: Dict[str, int] = {}
         total_notes = 0
 
@@ -298,8 +290,9 @@ class ObsidianMemoryVault:
         return True
 
     def export_markdown_archive(self, export_path: Path) -> Path:
-        export_path.mkdir(parents=True, exist_ok=True)
+        safe_export = PathSandbox.resolve_safe_path(export_path, self.memory_dir.parent.parent)
+        safe_export.mkdir(parents=True, exist_ok=True)
         for path in self.memory_dir.glob("*.md"):
-            dest = export_path / path.name
+            dest = safe_export / path.name
             dest.write_text(path.read_text(encoding="utf-8"), encoding="utf-8")
-        return export_path
+        return safe_export
