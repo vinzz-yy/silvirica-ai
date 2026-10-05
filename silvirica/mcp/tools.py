@@ -3,6 +3,7 @@ import json
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
+from silvirica.cache.engine import MultiTierCacheManager
 from silvirica.cli.doctor import SilviricaDoctor
 from silvirica.context.compiler import SmartContextCompiler
 from silvirica.core.config import load_config
@@ -26,12 +27,15 @@ from silvirica.skills.loader import SkillLoader
 class MCPToolRegistry:
     """
     Implements the 14 Universal MCP Tools for AI Assistants & IDEs.
+    Seamlessly integrates with multi-tier caching, deep dependency graphs,
+    and progressive skills.
     """
 
     def __init__(self, root_path: Path):
         self.root_path = root_path.resolve()
         self.brain = ProjectBrain(self.root_path)
         self.config = load_config(self.root_path)
+        self.cache = MultiTierCacheManager(self.brain.cache_dir)
         self.symbol_index = SymbolIndex(self.brain.symbols_dir / "symbols.db")
         self.graph_db = GraphDatabase(self.brain.graph_dir / "graph.db")
         self.graph_query = GraphQueryEngine(self.graph_db)
@@ -42,7 +46,7 @@ class MCPToolRegistry:
         self.security_engine = SecurityEngine(self.root_path, self.config)
         self.impact_analyzer = ImpactAnalyzer(self.graph_db)
         self.telemetry = TelemetryStore(self.brain.metrics_dir / "telemetry.db")
-        self.model_router = ModelRouter(self.config)
+        self.model_router = ModelRouter(self.config, cache_manager=self.cache)
 
     def get_tool_definitions(self) -> List[Dict[str, Any]]:
         return [
@@ -240,11 +244,17 @@ class MCPToolRegistry:
         elif name == "silvirica_security":
             file_path = arguments.get("file_path")
             if file_path:
-                p = self.root_path / file_path
+                try:
+                    p = (self.root_path / file_path).resolve()
+                    if not p.is_relative_to(self.root_path):
+                        return [{"severity": "HIGH", "category": "PATH_TRAVERSAL", "message": "Access denied: file path must be within the project workspace."}]
+                except Exception:
+                    return [{"severity": "HIGH", "category": "INVALID_PATH", "message": "Invalid file path specified."}]
+
                 from silvirica.security.secret_scanner import SecretScanner
                 from silvirica.security.rules import scan_code_for_vulnerabilities
                 findings = SecretScanner.scan_file(p, file_path)
-                if p.exists():
+                if p.exists() and p.is_file():
                     findings.extend(scan_code_for_vulnerabilities(p.read_text(encoding="utf-8", errors="ignore"), file_path))
                 return [f.to_dict() for f in findings]
             scan_res = self.security_engine.scan_repository()
@@ -259,8 +269,7 @@ class MCPToolRegistry:
             task = arguments.get("task", "")
             complexity_str = arguments.get("complexity", "STANDARD")
             complexity = ComplexityLevel.from_str(complexity_str)
-            compiler = SmartContextCompiler(self.config)
-            # Find relevant symbols
+            compiler = SmartContextCompiler(self.config, cache_manager=self.cache)
             syms = [f"[{s.file_path}:{s.start_line}] {s.name}" for s in self.symbol_index.find_by_name(task)[:5]]
             bundle = compiler.compile(task=task, complexity=complexity, symbols=syms)
             return {
@@ -268,6 +277,8 @@ class MCPToolRegistry:
                 "input_tokens": bundle.input_tokens,
                 "token_budget": bundle.token_budget,
                 "skills_activated": bundle.skills_text,
+                "reduction_percentage": bundle.reduction_percentage,
+                "cache_hit": bundle.cache_hit,
             }
 
         elif name == "silvirica_route":
@@ -294,7 +305,9 @@ class MCPToolRegistry:
             return {"changed_files": changed, "count": len(changed)}
 
         elif name == "silvirica_stats":
-            return self.telemetry.get_summary()
+            summary = self.telemetry.get_summary()
+            summary["cache_stats"] = self.cache.get_stats()
+            return summary
 
         elif name == "silvirica_health":
             doctor = SilviricaDoctor(self.root_path)

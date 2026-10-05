@@ -179,6 +179,17 @@ class SymbolInfo:
 
 
 @dataclass
+class AstRelation:
+    source_identifier: str
+    target_name: str
+    relation: RelationKind
+    file_path: str
+    line_number: int = 1
+    properties: Dict[str, Any] = field(default_factory=dict)
+
+
+
+@dataclass
 class RouteInfo:
     path: str
     method: str

@@ -9,6 +9,7 @@ from pathlib import Path
 
 from silvirica.benchmark.harness import BenchmarkHarness
 from silvirica.benchmark.report import BenchmarkReporter
+from silvirica.cache.engine import MultiTierCacheManager
 from silvirica.cli.ask import execute_ask
 from silvirica.cli.doctor import SilviricaDoctor
 from silvirica.cli.status import show_status
@@ -50,13 +51,19 @@ def main() -> None:
     analyze_parser = subparsers.add_parser("analyze", help="Index repository and update symbols and graph")
     analyze_parser.add_argument("--force", action="store_true", help="Force full re-index")
 
-    subparsers.add_parser("skills", help="List and inspect available progressive skills")
+    skills_parser = subparsers.add_parser("skills", help="List and inspect available progressive skills")
+    skills_parser.add_argument("--overlaps", action="store_true", help="Audit overlapping / duplicate skills")
 
     mem_parser = subparsers.add_parser("memory", help="Inspect and search Obsidian memory vault")
     mem_parser.add_argument("query", nargs="?", default="", help="Optional search term")
+    mem_parser.add_argument("--summary", action="store_true", help="Show Obsidian-style category summary")
 
     graph_parser = subparsers.add_parser("graph", help="Query knowledge graph relationships")
     graph_parser.add_argument("query", type=str, help="Node or keyword to trace in graph")
+
+    cache_parser = subparsers.add_parser("cache", help="Manage multi-tier L1-L7 cache")
+    cache_parser.add_argument("--clear", action="store_true", help="Clear all cache tiers")
+    cache_parser.add_argument("--stats", action="store_true", help="Show cache hit statistics")
 
     subparsers.add_parser("security", help="Run defensive security audit")
     subparsers.add_parser("uiux", help="Extract design system tokens and audit UI/UX")
@@ -140,16 +147,29 @@ def main() -> None:
 
     elif args.command == "skills":
         loader = SkillLoader(root / "skills")
-        skills = loader.list_skills()
-        print(f"================ INSTALLED PROGRESSIVE SKILLS ({len(skills)}) ================")
-        for s in sorted(skills, key=lambda x: x.name):
-            desc = (s.description[:75] + '...') if len(s.description) > 75 else s.description
-            print(f"- {s.name:<32} [{s.priority.upper():<8}]: {desc}")
-        print("=======================================================================")
+        if args.overlaps:
+            overlaps = loader.detect_overlapping_skills()
+            print(f"================ OVERLAPPING SKILLS DETECTED ({len(overlaps)}) ================")
+            for ov in overlaps[:15]:
+                print(f"- [{ov['skill_a']}] <-> [{ov['skill_b']}]: Shared triggers: {', '.join(ov['shared_triggers'])}")
+            print("=========================================================================")
+        else:
+            skills = loader.list_skills()
+            print(f"================ INSTALLED PROGRESSIVE SKILLS ({len(skills)}) ================")
+            for s in sorted(skills, key=lambda x: x.name):
+                desc = (s.description[:75] + '...') if len(s.description) > 75 else s.description
+                print(f"- {s.name:<32} [{s.priority.upper():<8}]: {desc}")
+            print("=======================================================================")
 
     elif args.command == "memory":
         vault = ObsidianMemoryVault(root / ".silvirica" / "memory")
-        if args.query:
+        if args.summary:
+            summary = vault.get_vault_summary()
+            print(f"================ OBSIDIAN MEMORY SUMMARY ({summary['total_notes']} files) ================")
+            for cat, cnt in summary["categories"].items():
+                print(f"  - {cat.replace('_', ' ').title():<20}: {cnt} entries")
+            print("===========================================================================")
+        elif args.query:
             matches = vault.search(args.query)
             print(f"Found {len(matches)} memory note(s) matching '{args.query}':")
             for m in matches:
@@ -167,6 +187,24 @@ def main() -> None:
         graph_db = GraphDatabase(root / ".silvirica" / "graph" / "graph.db")
         engine = GraphQueryEngine(graph_db)
         print(engine.query(args.query))
+
+    elif args.command == "cache":
+        cache_manager = MultiTierCacheManager(root / ".silvirica" / "cache")
+        if args.clear:
+            cache_manager.clear()
+            print("Silvirica Multi-Tier Cache cleared successfully.")
+        else:
+            stats = cache_manager.get_stats()
+            print("=================== SILVIRICA MULTI-TIER CACHE STATS ===================")
+            print(f"Total Lookups:      {stats['total_lookups']}")
+            print(f"Cache Hits:         {stats['hits']}")
+            print(f"Cache Misses:       {stats['misses']}")
+            print(f"Hit Rate:           {stats['hit_rate_percentage']}%")
+            print(f"Active Mem Entries: {stats['memory_entries']}")
+            print("Tier Hits Breakdown:")
+            for tier, hits in stats["tier_hits"].items():
+                print(f"  - {tier:<20}: {hits}")
+            print("========================================================================")
 
     elif args.command == "security":
         engine = SecurityEngine(root)

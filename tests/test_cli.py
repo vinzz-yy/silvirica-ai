@@ -1,4 +1,5 @@
 from __future__ import annotations
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -19,7 +20,10 @@ class TestCLIAndCommands(unittest.TestCase):
         self.brain.init()
 
     def tearDown(self) -> None:
-        self.temp_dir.cleanup()
+        try:
+            self.temp_dir.cleanup()
+        except Exception:
+            shutil.rmtree(self.temp_dir.name, ignore_errors=True)
 
     def test_silvirica_doctor(self) -> None:
         doctor = SilviricaDoctor(self.root)

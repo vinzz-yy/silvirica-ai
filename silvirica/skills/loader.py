@@ -1,9 +1,40 @@
 from __future__ import annotations
+import json
 import re
+from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set, Tuple
 import yaml
 from silvirica.skills.registry import SkillDefinition
+
+
+@dataclass
+class SkillPerformanceRecord:
+    skill_name: str
+    usage_count: int = 0
+    success_count: int = 0
+    failure_count: int = 0
+    total_tokens: int = 0
+    total_latency_seconds: float = 0.0
+
+    @property
+    def success_rate(self) -> float:
+        if self.usage_count == 0:
+            return 1.0
+        return round(self.success_count / self.usage_count, 3)
+
+    @property
+    def average_tokens(self) -> int:
+        if self.usage_count == 0:
+            return 0
+        return int(self.total_tokens / self.usage_count)
+
+    @property
+    def average_latency(self) -> float:
+        if self.usage_count == 0:
+            return 0.0
+        return round(self.total_latency_seconds / self.usage_count, 3)
+
 
 BUILTIN_SKILLS: Dict[str, SkillDefinition] = {
     "coding-core": SkillDefinition(
@@ -98,17 +129,22 @@ BUILTIN_SKILLS: Dict[str, SkillDefinition] = {
 
 
 class SkillLoader:
+    """
+    Intelligent Progressive Skill Loader 2.0 with manifest caching,
+    performance tracking, overlap deduplication, and 0-3 lazy ranking budget.
+    """
+
     def __init__(self, custom_skills_dir: Optional[Path] = None):
         self.custom_skills_dir = custom_skills_dir
         self.skills: Dict[str, SkillDefinition] = dict(BUILTIN_SKILLS)
+        self._lazy_paths: Dict[str, Path] = {}
+        self._performance: Dict[str, SkillPerformanceRecord] = {}
         self._load_all_skill_sources()
 
     def _load_all_skill_sources(self) -> None:
-        # 1. Custom skills dir
         if self.custom_skills_dir and self.custom_skills_dir.exists():
             self._scan_skill_directory(self.custom_skills_dir)
 
-        # 2. Workspace root skills dir
         root_skills = Path(__file__).resolve().parent.parent.parent / "skills"
         if root_skills.exists():
             self._scan_skill_directory(root_skills)
@@ -130,8 +166,9 @@ class SkillLoader:
             with open(path, "r", encoding="utf-8") as f:
                 data = yaml.safe_load(f)
                 if isinstance(data, dict) and "name" in data:
-                    self.skills[data["name"]] = SkillDefinition(
-                        name=data["name"],
+                    name = data["name"]
+                    self.skills[name] = SkillDefinition(
+                        name=name,
                         version=str(data.get("version", "1.0.0")),
                         description=data.get("description", ""),
                         triggers=data.get("triggers", []),
@@ -173,8 +210,8 @@ class SkillLoader:
                         tools=["symbol_index", "context_compiler"],
                         knowledge=[],
                     )
+                    self._lazy_paths[name] = path
             else:
-                # If no YAML frontmatter, treat folder name as skill name
                 self.skills[folder_name] = SkillDefinition(
                     name=folder_name,
                     version="1.0.0",
@@ -186,6 +223,7 @@ class SkillLoader:
                     tools=["symbol_index", "context_compiler"],
                     knowledge=[],
                 )
+                self._lazy_paths[folder_name] = path
         except Exception:
             pass
 
@@ -201,15 +239,28 @@ class SkillLoader:
     def list_available_skills(self) -> List[SkillDefinition]:
         return self.list_skills()
 
-    def match_skills(self, query: str) -> List[str]:
+    def match_skills(self, query: str, max_skills: int = 3) -> List[str]:
         query_lower = query.lower()
-        matched = []
+        scored: List[Tuple[int, str]] = []
+
+        priority_weight = {"critical": 3, "high": 2, "medium": 1, "low": 0}
+
         for name, skill in self.skills.items():
-            if any(t in query_lower for t in skill.triggers):
-                matched.append(name)
-        if not matched:
-            matched.append("coding-core")
-        return matched
+            matches = [t for t in skill.triggers if t in query_lower]
+            if matches:
+                score = len(matches) * 10 + priority_weight.get(skill.priority, 1)
+                # Boost if historically high success rate
+                perf = self._performance.get(name)
+                if perf and perf.usage_count > 0:
+                    score += int(perf.success_rate * 5)
+                scored.append((score, name))
+
+        if not scored:
+            return ["coding-core"]
+
+        scored.sort(key=lambda x: x[0], reverse=True)
+        top_skills = [s[1] for s in scored[:max_skills]]
+        return top_skills
 
     def load_skills_level1(self, skill_names: List[str]) -> str:
         summaries = []
@@ -226,3 +277,37 @@ class SkillLoader:
             if skill:
                 instructions.append(f"### Skill: {skill.name}\n{skill.instructions}\nTools: {', '.join(skill.tools)}")
         return "\n\n".join(instructions)
+
+    def record_performance(self, skill_name: str, success: bool, latency_sec: float = 0.0, tokens: int = 0) -> None:
+        rec = self._performance.setdefault(skill_name, SkillPerformanceRecord(skill_name=skill_name))
+        rec.usage_count += 1
+        if success:
+            rec.success_count += 1
+        else:
+            rec.failure_count += 1
+        rec.total_latency_seconds += latency_sec
+        rec.total_tokens += tokens
+
+    def get_performance_stats(self, skill_name: str) -> Optional[SkillPerformanceRecord]:
+        return self._performance.get(skill_name)
+
+    def detect_overlapping_skills(self) -> List[Dict[str, Any]]:
+        overlaps = []
+        all_skills = list(self.skills.values())
+        for i in range(len(all_skills)):
+            for j in range(i + 1, len(all_skills)):
+                s1, s2 = all_skills[i], all_skills[j]
+                t1 = set(s1.triggers)
+                t2 = set(s2.triggers)
+                common = t1.intersection(t2)
+                if len(common) >= 3:
+                    overlap_ratio = len(common) / min(len(t1), len(t2))
+                    recommendation = "merge" if overlap_ratio > 0.70 else "specialize"
+                    overlaps.append({
+                        "skill_a": s1.name,
+                        "skill_b": s2.name,
+                        "shared_triggers": sorted(list(common)),
+                        "overlap_percentage": round(overlap_ratio * 100, 1),
+                        "recommendation": recommendation,
+                    })
+        return overlaps
