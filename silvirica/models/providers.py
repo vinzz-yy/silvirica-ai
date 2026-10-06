@@ -61,8 +61,14 @@ class OpenAICompatibleProvider(AIProvider):
     def generate(self, model: str, prompt: str, system_prompt: Optional[str] = None, max_tokens: int = 1500) -> Dict[str, Any]:
         api_key = os.environ.get(self.config.api_key_env, "")
         if not api_key:
-            # Degrade gracefully to local deterministic simulator if no API key is set
-            return LocalDeterministicProvider().generate(model, prompt, system_prompt, max_tokens)
+            # Degrade gracefully to local deterministic fallback if no API key is set
+            res = LocalDeterministicProvider().generate(model, prompt, system_prompt, max_tokens)
+            res["provider_available"] = False
+            res["provider_called"] = False
+            res["actual_model"] = "NONE"
+            res["actual_provider"] = "NONE"
+            res["fallback_used"] = True
+            return res
 
         # Validate endpoint against SSRF
         try:
@@ -74,6 +80,12 @@ class OpenAICompatibleProvider(AIProvider):
                 "output_tokens": 0,
                 "latency_seconds": 0.0,
                 "model": model,
+                "selected_model": model,
+                "actual_model": "NONE",
+                "provider_available": True,
+                "provider_called": False,
+                "actual_provider": "NONE",
+                "fallback_used": True,
                 "success": False,
                 "error": str(sve),
             }
@@ -118,6 +130,12 @@ class OpenAICompatibleProvider(AIProvider):
                     "output_tokens": usage.get("completion_tokens", len(text) // 4),
                     "latency_seconds": latency,
                     "model": model,
+                    "selected_model": model,
+                    "actual_model": model,
+                    "provider_available": True,
+                    "provider_called": True,
+                    "actual_provider": "openai_compatible",
+                    "fallback_used": False,
                     "success": True,
                     "error": None,
                 }
@@ -128,6 +146,12 @@ class OpenAICompatibleProvider(AIProvider):
                     "output_tokens": 0,
                     "latency_seconds": latency,
                     "model": model,
+                    "selected_model": model,
+                    "actual_model": "NONE",
+                    "provider_available": True,
+                    "provider_called": True,
+                    "actual_provider": "openai_compatible",
+                    "fallback_used": True,
                     "success": False,
                     "error": resp.text,
                 }
@@ -151,6 +175,12 @@ class OpenAICompatibleProvider(AIProvider):
                         "output_tokens": usage.get("completion_tokens", len(text) // 4),
                         "latency_seconds": latency,
                         "model": model,
+                        "selected_model": model,
+                        "actual_model": model,
+                        "provider_available": True,
+                        "provider_called": True,
+                        "actual_provider": "openai_compatible",
+                        "fallback_used": False,
                         "success": True,
                         "error": None,
                     }
@@ -162,6 +192,12 @@ class OpenAICompatibleProvider(AIProvider):
                     "output_tokens": 0,
                     "latency_seconds": latency,
                     "model": model,
+                    "selected_model": model,
+                    "actual_model": "NONE",
+                    "provider_available": True,
+                    "provider_called": False,
+                    "actual_provider": "NONE",
+                    "fallback_used": True,
                     "success": False,
                     "error": str(e),
                 }
@@ -173,6 +209,12 @@ class OpenAICompatibleProvider(AIProvider):
                 "output_tokens": 0,
                 "latency_seconds": latency,
                 "model": model,
+                "selected_model": model,
+                "actual_model": "NONE",
+                "provider_available": True,
+                "provider_called": False,
+                "actual_provider": "NONE",
+                "fallback_used": True,
                 "success": False,
                 "error": str(e),
             }
@@ -185,17 +227,64 @@ class LocalDeterministicProvider(AIProvider):
     """
     def generate(self, model: str, prompt: str, system_prompt: Optional[str] = None, max_tokens: int = 1500) -> Dict[str, Any]:
         start_time = time.time()
-        lines = prompt.splitlines()
-        code_snippets = [l for l in lines if l.startswith("[") or "def " in l or "class " in l or "function " in l]
-        
-        response_text = (
-            f"**[Silvirica Local Intelligence Response]** (Model: {model})\n\n"
-            f"### Analysis\n"
-            f"Processed high-relevance project context ({len(prompt)} chars, ~{len(prompt)//4} tokens).\n\n"
-        )
-        if code_snippets:
-            response_text += "### Key Context Analyzed:\n" + "\n".join(f"- `{s.strip()}`" for s in code_snippets[:5]) + "\n\n"
-        response_text += "### Recommendation:\nAll context verified against local repository index and symbol graph."
+        import re
+
+        # Extract symbols, call hierarchy, memory, and code blocks from compiled prompt
+        symbols_match = re.search(r"## Exact Code Symbols\s*\n(.*?)(?=\n##|\Z)", prompt, re.DOTALL)
+        deps_match = re.search(r"## Direct Dependencies\s*\n(.*?)(?=\n##|\Z)", prompt, re.DOTALL)
+        callers_match = re.search(r"## Call Hierarchy & Dependents\s*\n(.*?)(?=\n##|\Z)", prompt, re.DOTALL)
+        code_match = re.search(r"## Targeted Code Context\s*\n(.*?)(?=\n##|\Z)", prompt, re.DOTALL)
+        memory_match = re.search(r"## Verified Project Memory\s*\n(.*?)(?=\n##|\Z)", prompt, re.DOTALL)
+
+        response_parts = [
+            "**[Silvirica Local Intelligence Fallback Response]**",
+            "",
+            "The required model provider is not configured. I found the following relevant local context:",
+            "",
+        ]
+
+        has_context = False
+        if symbols_match and symbols_match.group(1).strip():
+            has_context = True
+            response_parts.append("### Relevant Code Symbols:")
+            sym_clean = re.sub(r"<!-- UNTRUSTED_DATA_BOUNDARY.*?-->\n?", "", symbols_match.group(1).strip())
+            response_parts.append(sym_clean)
+            response_parts.append("")
+
+        if deps_match and deps_match.group(1).strip():
+            has_context = True
+            response_parts.append("### Dependencies:")
+            deps_clean = re.sub(r"<!-- UNTRUSTED_DATA_BOUNDARY.*?-->\n?", "", deps_match.group(1).strip())
+            response_parts.append(deps_clean)
+            response_parts.append("")
+
+        if callers_match and callers_match.group(1).strip():
+            has_context = True
+            response_parts.append("### Call Hierarchy:")
+            callers_clean = re.sub(r"<!-- UNTRUSTED_DATA_BOUNDARY.*?-->\n?", "", callers_match.group(1).strip())
+            response_parts.append(callers_clean)
+            response_parts.append("")
+
+        if code_match and code_match.group(1).strip():
+            has_context = True
+            response_parts.append("### Code Context:")
+            code_clean = re.sub(r"<!-- UNTRUSTED_DATA_BOUNDARY.*?-->\n?", "", code_match.group(1).strip())
+            response_parts.append(code_clean)
+            response_parts.append("")
+
+        if memory_match and memory_match.group(1).strip():
+            has_context = True
+            response_parts.append("### Project Memory:")
+            mem_clean = re.sub(r"<!-- UNTRUSTED_DATA_BOUNDARY.*?-->\n?", "", memory_match.group(1).strip())
+            response_parts.append(mem_clean)
+            response_parts.append("")
+
+        if not has_context:
+            response_parts.append("No matching code symbols or files were located in the repository index for this query.")
+            response_parts.append("")
+
+        response_parts.append("*(Note: To enable cloud reasoning, configure OPENAI_API_KEY in environment or .silvirica/config.yaml)*")
+        response_text = "\n".join(response_parts)
 
         latency = time.time() - start_time
         return {
@@ -204,6 +293,12 @@ class LocalDeterministicProvider(AIProvider):
             "output_tokens": len(response_text) // 4,
             "latency_seconds": max(0.005, latency),
             "model": model,
+            "selected_model": model,
+            "actual_model": "NONE",
+            "provider_available": False,
+            "provider_called": False,
+            "actual_provider": "NONE",
+            "fallback_used": True,
             "success": True,
             "error": None,
         }

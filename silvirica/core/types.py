@@ -282,6 +282,9 @@ class FastGateResult:
     reasoning_budget_tokens: int = 500
     cache_hit: bool = False
     cached_response: Optional[str] = None
+    files_retrieved_count: int = 0
+    symbols_retrieved_count: int = 0
+    graph_nodes_count: int = 0
 
 
 @dataclass

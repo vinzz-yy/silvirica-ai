@@ -117,6 +117,8 @@ class ModelRouter:
             model=model, prompt=prompt, system_prompt=system_prompt, max_tokens=max_tokens
         )
         result["category"] = category.value
+        result["selected_tier"] = category.value
+        result["selected_model"] = model
         result["cache_hit"] = False
         result["escalations"] = 0
 
@@ -126,6 +128,12 @@ class ModelRouter:
                 model=f"{model}-fallback", prompt=prompt, system_prompt=system_prompt, max_tokens=max_tokens
             )
             local_res["category"] = category.value
+            local_res["selected_tier"] = category.value
+            local_res["selected_model"] = model
+            local_res["actual_model"] = "NONE"
+            local_res["actual_provider"] = "NONE"
+            local_res["provider_called"] = False
+            local_res["fallback_used"] = True
             local_res["cache_hit"] = False
             local_res["fallback_from_error"] = result.get("error")
             result = local_res

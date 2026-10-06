@@ -85,6 +85,35 @@ class SymbolIndex:
                 cur = conn.execute("SELECT * FROM symbols WHERE name LIKE ? COLLATE NOCASE", (f"%{name}%",))
             return [self._row_to_symbol(row) for row in cur.fetchall()]
 
+    def find_by_file(self, file_path: str, exact: bool = False) -> List[SymbolInfo]:
+        norm_path = file_path.replace("\\", "/").strip()
+        with self._get_connection() as conn:
+            if exact:
+                cur = conn.execute("SELECT * FROM symbols WHERE file_path = ? COLLATE NOCASE ORDER BY start_line ASC", (norm_path,))
+            else:
+                cur = conn.execute(
+                    "SELECT * FROM symbols WHERE file_path LIKE ? OR file_path LIKE ? COLLATE NOCASE ORDER BY start_line ASC",
+                    (f"%{norm_path}", f"%{norm_path}%"),
+                )
+            return [self._row_to_symbol(row) for row in cur.fetchall()]
+
+    def find_by_kind(self, kind: SymbolKind) -> List[SymbolInfo]:
+        kind_val = kind.value if isinstance(kind, SymbolKind) else str(kind)
+        with self._get_connection() as conn:
+            cur = conn.execute("SELECT * FROM symbols WHERE kind = ? COLLATE NOCASE ORDER BY file_path, start_line", (kind_val,))
+            return [self._row_to_symbol(row) for row in cur.fetchall()]
+
+    def find_all(self) -> List[SymbolInfo]:
+        with self._get_connection() as conn:
+            cur = conn.execute("SELECT * FROM symbols ORDER BY file_path, start_line")
+            return [self._row_to_symbol(row) for row in cur.fetchall()]
+
+    def find_in_files(self, file_paths: List[str]) -> List[SymbolInfo]:
+        results: List[SymbolInfo] = []
+        for fp in file_paths:
+            results.extend(self.find_by_file(fp, exact=False))
+        return results
+
     def count(self) -> int:
         with self._get_connection() as conn:
             cur = conn.execute("SELECT COUNT(*) FROM symbols")

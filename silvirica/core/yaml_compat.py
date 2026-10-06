@@ -8,7 +8,7 @@ and transparently leverages PyYAML when available.
 from __future__ import annotations
 import json
 import re
-from typing import Any, Dict, List, Optional, Union
+from typing import Any, Dict, List, Optional, Tuple, Union
 
 try:
     import yaml as _pyyaml

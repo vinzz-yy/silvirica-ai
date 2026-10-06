@@ -8,6 +8,7 @@ import argparse
 import sys
 import time
 from pathlib import Path
+from typing import Any, Dict, List, Optional
 
 from silvirica.benchmark.harness import BenchmarkHarness
 from silvirica.benchmark.report import BenchmarkReporter
@@ -34,7 +35,7 @@ from silvirica.skills.loader import SkillLoader
 from silvirica.uiux.design_system import DesignSystemExtractor
 
 
-def main() -> None:
+def main(argv: Optional[List[str]] = None) -> None:
     parser = argparse.ArgumentParser(
         prog="silvirica",
         description="Silvirica AI: Universal AI Intelligence Enhancement Runtime",
@@ -95,11 +96,11 @@ def main() -> None:
     jev_sub.add_parser("doctor", help="Run comprehensive diagnostics on JEV connectivity & latency")
     jev_sub.add_parser("benchmark", help="Run comparative benchmark: Without JEV vs With JEV")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     if not args.command:
         parser.print_help()
-        sys.exit(0)
+        return
 
     root = Path.cwd()
 
@@ -147,7 +148,8 @@ def main() -> None:
     elif args.command == "doctor":
         doc = SilviricaDoctor(root)
         ok = doc.print_report()
-        sys.exit(0 if ok else 1)
+        if not ok:
+            sys.exit(1)
 
     elif args.command == "status":
         show_status(root)

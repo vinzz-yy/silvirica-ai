@@ -67,6 +67,7 @@ def execute_ask(
             state_hash = ""
 
     # 1. Fast Gate Check
+    # 1. Fast Gate Check
     gate_decision = FastGate.evaluate(
         query=query,
         root_path=root_path,
@@ -82,6 +83,9 @@ def execute_ask(
         latency = time.time() - start_time
         baseline_estimate = 15000
         tokens_saved = baseline_estimate
+        files_cnt = max(1, gate_decision.files_retrieved_count)
+        symbols_cnt = max(1, gate_decision.symbols_retrieved_count)
+        graph_nodes_cnt = gate_decision.graph_nodes_count
 
         event = TelemetryEvent(
             query=query,
@@ -96,8 +100,8 @@ def execute_ask(
             cache_hit=gate_decision.cache_hit,
             zero_model=True,
             skills_activated=[],
-            files_retrieved=1,
-            symbols_retrieved=1,
+            files_retrieved=files_cnt,
+            symbols_retrieved=symbols_cnt,
         )
         decision_details = {
             "query": query,
@@ -106,16 +110,24 @@ def execute_ask(
             "risk": gate_decision.risk.value,
             "zero_model": True,
             "category": "LOCAL",
-            "model": "local-deterministic",
+            "selected_tier": "LOCAL",
+            "selected_model": "NONE",
+            "model": "NONE",
+            "actual_model": "NONE",
+            "provider_available": False,
+            "provider_called": False,
+            "actual_provider": "NONE",
+            "fallback_used": False,
             "skills_activated": [],
-            "files_retrieved": 1,
-            "symbols_retrieved": 1,
+            "files_retrieved": files_cnt,
+            "symbols_retrieved": symbols_cnt,
             "memories_used": 0,
-            "graph_nodes_used": 0,
+            "graph_nodes_used": graph_nodes_cnt,
             "cache_hit": gate_decision.cache_hit,
             "input_tokens": 0,
             "estimated_baseline": baseline_estimate,
             "reduction_percentage": 100.0,
+            "context_reduction_percentage": 100.0,
             "latency_seconds": round(latency, 4),
             "routing_reason": gate_decision.zero_model_reason or "Deterministic local repository lookup satisfied query without LLM invocation.",
         }
@@ -127,27 +139,61 @@ def execute_ask(
             "----------------------------------------------------------------",
             gate_decision.zero_model_result,
             "----------------------------------------------------------------",
-            f"Latency: {latency:.3f}s | Tokens: 0 input (100% saved) | Engine: Local Deterministic\n",
+            f"Latency: {latency:.3f}s | Context: 0 tokens (100% reduction) | Engine: Local Deterministic | Provider Called: NO | Actual Model: NONE\n",
         ]
         return "\n".join(output)
 
-    # 3. Retrieve Context
-    matched_symbols = symbol_index.find_by_name(query, exact=False)[:8]
+    # 3. Retrieve Context (Entity and Structural Retrieval)
+    import re
+    candidate_files = re.findall(r'[A-Za-z0-9_./\-]+\.[A-Za-z0-9]+', query)
+    candidate_tokens = [w for w in re.findall(r'[A-Za-z_][A-Za-z0-9_]+', query) if len(w) >= 3 and w.lower() not in {"what", "which", "where", "show", "find", "list", "explain", "code", "file", "function", "class", "defined", "exist"}]
+
+    matched_symbols: List[Any] = []
+    seen_sym_keys = set()
+
+    # Retrieve by file
+    for cf in candidate_files:
+        for s in symbol_index.find_by_file(cf):
+            key = (s.file_path, s.name, s.start_line)
+            if key not in seen_sym_keys:
+                seen_sym_keys.add(key)
+                matched_symbols.append(s)
+
+    # Retrieve by identifier tokens
+    for tok in candidate_tokens:
+        for s in symbol_index.find_by_name(tok, exact=False):
+            key = (s.file_path, s.name, s.start_line)
+            if key not in seen_sym_keys:
+                seen_sym_keys.add(key)
+                matched_symbols.append(s)
+
+    # Fallback to general query search if none found
+    if not matched_symbols:
+        for s in symbol_index.find_by_name(query, exact=False)[:8]:
+            key = (s.file_path, s.name, s.start_line)
+            if key not in seen_sym_keys:
+                seen_sym_keys.add(key)
+                matched_symbols.append(s)
+
     symbol_snippets = [
         f"[{s.file_path}:{s.start_line}-{s.end_line}] {s.kind.value} {s.name} - {s.signature or ''}"
-        for s in matched_symbols
+        for s in matched_symbols[:8]
     ]
 
     # Gather dependency & caller graph edges
     direct_dependencies: List[str] = []
     callers_callees: List[str] = []
-    for s in matched_symbols[:3]:
+    for s in matched_symbols[:5]:
         sym_node_id = f"sym:{s.file_path}:{s.name}"
         outward = graph_db.get_outward_edges(sym_node_id)
+        if not outward:
+            outward = graph_db.get_outward_edges(s.name)
         for edge, target in outward:
             direct_dependencies.append(f"{s.name} --({edge.relation.value})--> {target.name} ({target.kind.value})")
 
         inward = graph_db.get_inward_edges(sym_node_id)
+        if not inward:
+            inward = graph_db.get_inward_edges(s.name)
         for edge, source in inward:
             callers_callees.append(f"{source.name} ({source.kind.value}) --({edge.relation.value})--> {s.name}")
 
@@ -221,11 +267,24 @@ def execute_ask(
     tokens_saved = max(0, baseline_estimate - compiled_bundle.input_tokens)
     reduction_pct = compiled_bundle.reduction_percentage
 
+    files_retrieved_count = len(set(s.file_path for s in matched_symbols))
+    if candidate_files and files_retrieved_count == 0:
+        files_retrieved_count = len(candidate_files)
+    symbols_retrieved_count = len(matched_symbols)
+    graph_nodes_count = len(graph_nodes) + len(direct_dependencies) + len(callers_callees)
+    memories_used_count = len(memory_records)
+
+    provider_called = bool(routing_result.get("provider_called", False))
+    provider_available = bool(routing_result.get("provider_available", False))
+    selected_model = routing_result.get("selected_model", routing_result.get("model", "unknown"))
+    actual_model = routing_result.get("actual_model", "NONE" if not provider_called else selected_model)
+    fallback_used = bool(routing_result.get("fallback_used", False))
+
     event = TelemetryEvent(
         query=query,
         complexity=gate_decision.complexity,
         category=category,
-        model_used=routing_result.get("model", "unknown"),
+        model_used=actual_model if provider_called else "local-deterministic",
         input_tokens=compiled_bundle.input_tokens,
         output_tokens=routing_result.get("output_tokens", 0),
         estimated_baseline_tokens=baseline_estimate,
@@ -234,8 +293,8 @@ def execute_ask(
         cache_hit=routing_result.get("cache_hit", False) or compiled_bundle.cache_hit,
         zero_model=False,
         skills_activated=active_skills,
-        files_retrieved=len(matched_symbols),
-        symbols_retrieved=len(matched_symbols),
+        files_retrieved=files_retrieved_count,
+        symbols_retrieved=symbols_retrieved_count,
     )
     decision_details = {
         "query": query,
@@ -244,29 +303,42 @@ def execute_ask(
         "risk": gate_decision.risk.value,
         "zero_model": False,
         "category": category.value,
-        "model": routing_result.get("model", "unknown"),
+        "selected_tier": category.value,
+        "selected_model": selected_model,
+        "model": actual_model if provider_called else "NONE",
+        "actual_model": actual_model,
+        "actual_provider": routing_result.get("actual_provider", "NONE"),
+        "provider_called": provider_called,
+        "provider_available": provider_available,
+        "fallback_used": fallback_used,
         "skills_activated": active_skills,
-        "files_retrieved": len(matched_symbols),
-        "symbols_retrieved": len(matched_symbols),
-        "memories_used": len(memory_records),
-        "graph_nodes_used": len(graph_nodes),
+        "files_retrieved": files_retrieved_count,
+        "symbols_retrieved": symbols_retrieved_count,
+        "memories_used": memories_used_count,
+        "graph_nodes_used": graph_nodes_count,
         "cache_hit": routing_result.get("cache_hit", False),
         "input_tokens": compiled_bundle.input_tokens,
         "estimated_baseline": baseline_estimate,
         "reduction_percentage": reduction_pct,
+        "context_reduction_percentage": reduction_pct,
         "latency_seconds": round(latency, 4),
         "routing_reason": f"Routed to {category.value} tier for {gate_decision.intent} task with {gate_decision.complexity.name} complexity.",
     }
     telemetry_store.record_event(event, decision_details)
 
     cache_badge = " [L7 CACHE HIT]" if routing_result.get("cache_hit") else ""
+    if provider_called:
+        header_text = f"[SILVIRICA INTELLIGENCE RESPONSE{cache_badge}] (Tier: {category.value} | Model: {selected_model} | Provider Called: YES)"
+    else:
+        header_text = f"[SILVIRICA INTELLIGENCE RESPONSE (LOCAL DETERMINISTIC FALLBACK){cache_badge}] (Selected Tier: {category.value} | Selected Model: {selected_model} | Provider Called: NO | Actual Model: NONE)"
+
     output = [
         "\n================================================================",
-        f"[SILVIRICA INTELLIGENCE RESPONSE{cache_badge}] (Tier: {category.value} | Model: {routing_result.get('model')})",
+        header_text,
         "================================================================",
         routing_result.get("text", "No response generated."),
         "================================================================",
-        f"Input Tokens: {compiled_bundle.input_tokens:,} (Baseline: ~{baseline_estimate:,} | {reduction_pct}% saved)",
+        f"Context Tokens: {compiled_bundle.input_tokens:,} (Baseline: ~{baseline_estimate:,} | {reduction_pct}% reduction)",
         f"Latency: {latency:.3f}s | Skills Active: {', '.join(active_skills) or 'None'}",
         "================================================================\n",
     ]

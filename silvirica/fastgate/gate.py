@@ -5,6 +5,7 @@ from silvirica.cache.engine import CacheTier, MultiTierCacheManager
 from silvirica.core.types import ComplexityLevel, FastGateResult, RiskLevel
 from silvirica.fastgate.classifier import FastGateClassifier
 from silvirica.fastgate.zero_model import ZeroModelResolver
+from silvirica.graph.graph_db import GraphDatabase
 from silvirica.memory.vault import ObsidianMemoryVault
 from silvirica.repository.symbols import SymbolIndex
 
@@ -37,10 +38,13 @@ class FastGate:
                 reasoning_budget_tokens=0,
                 cache_hit=True,
                 cached_response=cached_res.get("zero_model_result"),
+                files_retrieved_count=cached_res.get("files_retrieved", 1),
+                symbols_retrieved_count=cached_res.get("symbols_retrieved", 1),
+                graph_nodes_count=cached_res.get("graph_nodes", 0),
             )
 
         # 2. Check Zero-Model Resolver
-        is_zero, reason, answer = self.zero_resolver._resolve_internal(query)
+        is_zero, reason, answer, stats = self.zero_resolver.resolve(query)
         if is_zero and answer is not None:
             # Store in L1 cache
             self.cache.set(
@@ -57,6 +61,9 @@ class FastGate:
                     "zero_model_reason": reason,
                     "zero_model_answer": answer,
                     "zero_model_result": answer,
+                    "files_retrieved": stats.get("files_retrieved", 1),
+                    "symbols_retrieved": stats.get("symbols_retrieved", 1),
+                    "graph_nodes": stats.get("graph_nodes", 0),
                 },
                 project_state_hash=state_hash,
             )
@@ -73,6 +80,9 @@ class FastGate:
                 zero_model_result=answer,
                 reasoning_budget_tokens=0,
                 cache_hit=False,
+                files_retrieved_count=stats.get("files_retrieved", 1),
+                symbols_retrieved_count=stats.get("symbols_retrieved", 1),
+                graph_nodes_count=stats.get("graph_nodes", 0),
             )
 
         # 3. FastGate Intent Classification
@@ -125,4 +135,9 @@ class FastGate:
         if memory_vault:
             gate.vault = memory_vault
             gate.zero_resolver.vault = memory_vault
+        if graph_engine:
+            if hasattr(graph_engine, "db"):
+                gate.zero_resolver.graph_db = graph_engine.db
+            elif isinstance(graph_engine, GraphDatabase):
+                gate.zero_resolver.graph_db = graph_engine
         return gate.process(query, state_hash=state_hash)

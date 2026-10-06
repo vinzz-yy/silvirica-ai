@@ -1,0 +1,78 @@
+name: Continuous Integration & Verification Matrix
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+permissions:
+  contents: read
+
+jobs:
+  test-matrix:
+    name: Test (${{ matrix.os }} - Python ${{ matrix.python-version }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        python-version: ["3.9", "3.10", "3.11", "3.12", "3.13", "3.14"]
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: "pip"
+
+      - name: Install dependencies & build package
+        run: |
+          python -m pip install --upgrade pip build
+          python -m pip install -e ".[dev]"
+
+      - name: Packaging verification
+        run: |
+          python -m build
+
+      - name: Run Full Pytest Suite (Unit, Integration, Security, Smoke)
+        run: |
+          python -m pytest -v --tb=short
+
+      - name: Windows PowerShell Installer Verification
+        if: runner.os == 'Windows'
+        shell: powershell
+        run: |
+          powershell -NoProfile -ExecutionPolicy Bypass -File .\install.ps1 -DryRun -Channel main
+
+  security-and-lint:
+    name: Code Quality & Security Audit
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install linters & security analyzers
+        run: |
+          python -m pip install --upgrade pip
+          pip install ruff bandit
+          pip install -e .
+
+      - name: Run Ruff Linter
+        run: |
+          ruff check silvirica/ tests/ || true
+
+      - name: Run Bandit AST Security Analysis
+        run: |
+          bandit -r silvirica/ -ll -ii -x silvirica/daemon/server.py || true

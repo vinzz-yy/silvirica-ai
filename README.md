@@ -87,27 +87,100 @@ Instead of naively feeding thousands of lines of raw code to expensive models, S
 <img src="assets/silvirica-terminal-hud.png" alt="Silvirica AI Terminal HUD Dashboard" width="90%"/>
 </div>
 
----
+## 🚀 Installation & Setup
 
-## 🚀 Instant Installation
+Silvirica AI provides hardened, isolated installers for Windows (PowerShell) and POSIX systems (Linux & macOS), as well as direct Python package installation.
 
-### One-Line Installers
+> [!IMPORTANT]
+> **Stable Release vs. Development Channel:**
+> - **Stable Releases** (`-Channel release` / `--channel release`, default) use pinned release tags (e.g. `v0.1.0`) with optional SHA-256 checksum verification. The installer will **never** silently fall back to `main`.
+> - **Development Channel** (`-Channel main` / `--channel main`) explicitly tracks the latest unreleased development branch.
 
-#### Windows (PowerShell)
+### 1. Windows (PowerShell)
+
+**Stable Release Installation (Recommended):**
 ```powershell
-irm https://raw.githubusercontent.com/vinzz-yy/silvirica-ai/main/install.ps1 | iex
+# Download installer
+Invoke-WebRequest -Uri "https://raw.githubusercontent.com/vinzz-yy/silvirica-ai/main/install.ps1" -OutFile "install.ps1"
+
+# Verify & run installer with pinned release
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version "0.1.0"
 ```
 
-#### Linux & macOS (Bash / Zsh)
+**With SHA-256 Checksum Verification:**
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Version "0.1.0" -ExpectedSha256 "<64-hex-sha256-hash>"
+```
+
+**Development Channel (Latest `main`):**
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -Channel main
+```
+
+**Dry-Run Verification:**
+```powershell
+powershell -ExecutionPolicy Bypass -File .\install.ps1 -DryRun
+```
+
+### 2. Linux & macOS (Bash / Zsh)
+
+**Stable Release Installation:**
 ```bash
-curl -fsSL https://raw.githubusercontent.com/vinzz-yy/silvirica-ai/main/install.sh | bash
+curl -fsSL https://raw.githubusercontent.com/vinzz-yy/silvirica-ai/main/install.sh -o install.sh
+bash install.sh --version 0.1.0
 ```
 
-#### From Source
+**With SHA-256 Checksum Verification:**
+```bash
+bash install.sh --version 0.1.0 --expected-sha256 "<64-hex-sha256-hash>"
+```
+
+**Development Channel (Latest `main`):**
+```bash
+bash install.sh --channel main
+```
+
+### 3. Development Installation (from Source)
+
 ```bash
 git clone https://github.com/vinzz-yy/silvirica-ai.git
 cd silvirica-ai
-pip install -e .
+python -m venv venv
+# On Windows: .\venv\Scripts\activate
+# On Linux/macOS: source venv/bin/activate
+pip install -e ".[dev]"
+```
+
+### 4. PATH Configuration & Uninstallation
+
+- **Windows:** Installed shims are located at `%LOCALAPPDATA%\silvirica\bin`. The installer adds this to User PATH non-destructively.
+- **Linux/macOS:** Symlinked to `~/.local/bin/silvirica`. Ensure `~/.local/bin` is in your `PATH` (`export PATH="$HOME/.local/bin:$PATH"`).
+- **Uninstallation:**
+  - Windows: `Remove-Item -Recurse -Force "$env:LOCALAPPDATA\silvirica"`
+  - Linux/macOS: `rm -rf ~/.local/share/silvirica ~/.local/bin/silvirica`
+
+---
+
+## ⚙️ AI Provider Configuration & Local Deterministic Mode
+
+Silvirica AI is designed with **truthful provider reporting** and an offline-first **Local Deterministic Fallback Mode**.
+
+### 1. Zero-Model & Local Deterministic Mode (Default: No API Key Required)
+When no external provider API key is configured, Silvirica operates 100% locally:
+- Exact symbol searches, file listings, and call graphs are resolved via AST & SQLite Knowledge Graph in `<40ms` with **0 tokens**.
+- Queries requiring reasoning provide relevant local context and symbol definitions without faking model responses.
+- `explain-last` accurately reports `Zero-Model Hit: YES`, `Provider Called: NO`, `Actual Model: NONE`.
+
+### 2. Cloud Model Integration (Optional)
+To enable cloud reasoning tiers (e.g. OpenAI, Anthropic, or local Ollama endpoints):
+
+```bash
+# OpenAI or compatible endpoints
+export OPENAI_API_KEY="sk-..."
+export OPENAI_BASE_URL="https://api.openai.com/v1" # or http://localhost:11434/v1 for Ollama
+
+# Anthropic endpoints
+export ANTHROPIC_API_KEY="sk-ant-..."
 ```
 
 ---
@@ -130,22 +203,22 @@ Silvirica AI natively implements the **Model Context Protocol (MCP)**. Connect S
 
 ### 14 Native MCP Tools Available to Agents
 
-| MCP Tool | Purpose | Typical Latency |
-| :--- | :--- | :--- |
-| `silvirica_project` | Auto-detects framework, languages, package managers, and architecture. | `<15ms` (Cached) |
-| `silvirica_search` | Hybrid structural and lexical code search with relevance scoring. | `<40ms` |
-| `silvirica_symbol` | Surgical symbol signature and docstring extractor (Zero-Token Path). | `<25ms` |
-| `silvirica_graph` | Multi-hop dependency and caller graph traversal via SQLite. | `<35ms` |
-| `silvirica_memory` | Obsidian markdown memory vault reader with wikilinks. | `<20ms` |
-| `silvirica_recall` | Fast ADR, failure signal, and architectural precedent retrieval. | `<25ms` |
-| `silvirica_skill` | Progressive skill instructions loader (Level 1 Synopsis / Level 2 Deep). | `<15ms` |
-| `silvirica_security` | Defensive vulnerability, permissions, and credential scanner. | `<50ms` |
-| `silvirica_context` | Smart Context Compiler (budget allocation + entropy redaction). | `<60ms` |
-| `silvirica_route` | Empirical model selector and reasoning budget calculator. | `<10ms` |
-| `silvirica_impact` | Blast radius and multi-hop symbol change impact analyzer. | `<45ms` |
-| `silvirica_git` | Git diff, unstaged change inspector, and commit history. | `<30ms` |
-| `silvirica_stats` | Real-time observatory telemetry, cache efficiency, and token savings. | `<10ms` |
-| `silvirica_health` | Silvirica Doctor 17-point runtime diagnostic matrix. | `<40ms` |
+| MCP Tool | Purpose | Typical Latency | Risk Rating |
+| :--- | :--- | :--- | :--- |
+| `silvirica_project` | Auto-detects framework, languages, package managers, and architecture. | `<15ms` (Cached) | `LOW` |
+| `silvirica_search` | Hybrid structural and lexical code search with relevance scoring. | `<40ms` | `LOW` |
+| `silvirica_symbol` | Surgical symbol signature and docstring extractor (Zero-Token Path). | `<25ms` | `LOW` |
+| `silvirica_graph` | Multi-hop dependency and caller graph traversal via SQLite. | `<35ms` | `LOW` |
+| `silvirica_memory` | Obsidian markdown memory vault reader with wikilinks. | `<20ms` | `LOW` |
+| `silvirica_recall` | Fast ADR, failure signal, and architectural precedent retrieval. | `<25ms` | `LOW` |
+| `silvirica_skill` | Progressive skill instructions loader (Level 1 Synopsis / Level 2 Deep). | `<15ms` | `LOW` |
+| `silvirica_security` | Defensive vulnerability, permissions, and credential scanner. | `<50ms` | `MEDIUM` |
+| `silvirica_context` | Smart Context Compiler (budget allocation + entropy redaction). | `<60ms` | `LOW` |
+| `silvirica_route` | JEV & empirical model selector and reasoning budget calculator. | `<10ms` | `LOW` |
+| `silvirica_impact` | Blast radius and multi-hop symbol change impact analyzer. | `<45ms` | `LOW` |
+| `silvirica_git` | Git diff, unstaged change inspector, and commit history. | `<30ms` | `MEDIUM` |
+| `silvirica_stats` | Real-time observatory telemetry, cache efficiency, and token savings. | `<10ms` | `LOW` |
+| `silvirica_health` | Silvirica Doctor 18-point runtime diagnostic matrix. | `<40ms` | `LOW` |
 
 ---
 
@@ -386,49 +459,71 @@ Unlike traditional assistants that stuff tens of thousands of instruction tokens
 
 | Command | Description | Example |
 | :--- | :--- | :--- |
-| `silvirica init` | Initializes `.silvirica/` brain, SQLite graph, and Obsidian memory in current workspace. | `silvirica init` |
-| `silvirica doctor` | Runs 17-point comprehensive health check (DBs, MCP, AST, Security, Cache). | `silvirica doctor` |
-| `silvirica ask <query>` | Queries codebase with Zero-Model resolver and Smart Context Compiler. | `silvirica ask "Where is ProjectBrain?"` |
-| `silvirica dashboard` | Launches real-time terminal Observatory telemetry HUD. | `silvirica dashboard` |
-| `silvirica benchmark` | Runs Naive vs. Silvirica token and latency comparison harness. | `silvirica benchmark` |
-| `silvirica skills` | Lists all 142 progressive skills and their activation statuses. | `silvirica skills` |
-| `silvirica graph <symbol>` | Queries multi-hop SQLite dependency and caller relationships. | `silvirica graph "ProjectBrain"` |
-| `silvirica security` | Scans workspace for exposed secrets, high-entropy tokens, and OWASP risks. | `silvirica security` |
+| `silvirica init` | Initializes `.silvirica/` brain, config, and indexes codebase. | `silvirica init` |
+| `silvirica doctor` | Runs 18-point comprehensive runtime diagnostics (DBs, MCP, AST, Security, Cache). | `silvirica doctor` |
+| `silvirica analyze` | Indexes repository symbols and builds knowledge graph. | `silvirica analyze --force` |
+| `silvirica status` | Displays indexed symbols, graph nodes, memory notes, and cache stats. | `silvirica status` |
+| `silvirica ask <query>` | Queries intelligence with Zero-Model resolver and Smart Context Compiler. | `silvirica ask "What functions exist in app.py?"` |
+| `silvirica graph <symbol>` | Queries multi-hop SQLite dependency and caller relationships. | `silvirica graph "checkout"` |
+| `silvirica explain-last` | Truthfully explains last routing decision, model tier, and retrieval counts. | `silvirica explain-last` |
+| `silvirica jev status` | Shows JEV capability health, circuit breaker state, and metrics. | `silvirica jev status` |
+| `silvirica jev doctor` | Runs comprehensive diagnostics on JEV connectivity & latency. | `silvirica jev doctor` |
+| `silvirica jev benchmark` | Runs comparative benchmark: Without JEV vs. With JEV. | `silvirica jev benchmark` |
+| `silvirica security` | Scans workspace for exposed secrets, high-entropy tokens, and OWASP risks. | `silvirica security scan` |
+| `silvirica skills` | Lists all 142 progressive skills and audits overlapping triggers. | `silvirica skills --overlaps` |
+| `silvirica memory` | Inspects and searches Obsidian memory vault with wikilinks. | `silvirica memory "ADR"` |
+| `silvirica cache` | Inspects multi-tier L1-L7 hit rate statistics or purges caches. | `silvirica cache --stats` |
 | `silvirica uiux` | Audits design system tokens, typography hierarchy, and CSS variables. | `silvirica uiux` |
-| `silvirica explain-last` | Explains routing decisions, model tiers, and token budget breakdowns. | `silvirica explain-last` |
+| `silvirica dashboard` | Launches real-time terminal Observatory telemetry HUD. | `silvirica dashboard` |
+| `silvirica benchmark` | Runs verified benchmark harness with correctness gates. | `silvirica benchmark` |
 | `silvirica mcp` | Starts standard MCP stdio server for IDE integrations. | `silvirica mcp` |
-| `silvirica daemon` | Launches background REST API daemon for webhooks and extensions. | `silvirica daemon --port 8420` |
+| `silvirica daemon` | Launches background REST API daemon for extensions. | `silvirica daemon --port 7458` |
 
 ---
 
-## 📊 Benchmark & Telemetry
+## 📊 Benchmark & Ground-Truth Methodology
 
-Real-world benchmark executed against large enterprise codebases:
+Silvirica AI benchmarks compare real-world efficiency with strict **Correctness Gates**. A benchmark run only counts as an efficiency improvement if the output meets ground-truth task completion requirements (`GATE: PASS`).
 
 ```
-======================================================================
-         SILVIRICA AI EFFICIENCY & TOKEN BENCHMARK HARNESS
-======================================================================
-Metric                     Naïve Full-Context        Silvirica Engine
-----------------------------------------------------------------------
-Query: "Where is ProjectBrain defined?"
-• Strategy                 Full Workspace Dump       FastGate Zero-Model
-• Latency                  4,820 ms                  32 ms (150x faster)
-• Tokens Consumed          38,450 tokens             0 tokens (100% saved)
-• Model Cost               $0.1153                   $0.0000
-
-Query: "Check security boundary in AuthController"
-• Strategy                 Entire App Source Dump    Surgical AST + Skill L1
-• Latency                  7,410 ms                  840 ms (8.8x faster)
-• Tokens Consumed          64,200 tokens             280 tokens (99.5% saved)
-• Secrets Redacted         0 (leaked to API)         100% (intercepted locally)
-• Selected Model           Flagship LLM ($$$)        o3-mini (Reasoning: Medium)
-----------------------------------------------------------------------
-Aggregated Token Reduction: >99.4%
-Average Speedup Factor:     12.4x
-Local Interceptions:        Zero-Model FastGate Active
-======================================================================
+==========================================================================================
+                   SILVIRICA AI BENCHMARK SCOREBOARD                                      
+                 (BASELINE vs SURGICAL SILVIRICA PIPELINE)                                
+==========================================================================================
+SCENARIO                         | BASELINE (Tokens) | SILVIRICA CONTEXT  | REDUCTION  | GATE  
+------------------------------------------------------------------------------------------
+Symbol Lookup (Where is AuthCon  | 18,500            | 327                | 98.2%      | PASS  
+File Path Discovery              | 14,000            | 272                | 98.1%      | PASS  
+Bug Investigation (Login Loop)   | 34,000            | 290                | 99.1%      | PASS  
+Feature Implementation (Rate Li  | 42,000            | 282                | 99.3%      | PASS  
+Large-Repository Dependency Deb  | 68,000            | 285                | 99.6%      | PASS  
+Defensive Security & IDOR Revie  | 56,000            | 1,105              | 98.0%      | PASS  
+Architecture Decision Memory An  | 28,000            | 322                | 98.9%      | PASS  
+Codebase Modular Refactoring     | 48,000            | 1,135              | 97.6%      | PASS  
+==========================================================================================
+TOTAL BASELINE CONTEXT:    308,500 tokens
+TOTAL SILVIRICA CONTEXT:   4,018 tokens
+TOTAL CONTEXT REDUCED:     304,482 tokens (TOTAL TOKENS SAVED: 304,482)
+OVERALL CONTEXT REDUCTION: 98.7% (OVERALL TOKEN REDUCTION: 98.7%)
+CORRECTNESS GATE STATUS:   ALL GATES PASSED (Verified)
+==========================================================================================
 ```
+
+---
+
+## 🔧 Troubleshooting & Common Questions
+
+### 1. `silvirica doctor` reports "Local Deterministic Fallback Mode active"
+- **Cause:** No external `OPENAI_API_KEY` or `ANTHROPIC_API_KEY` is configured in environment variables.
+- **Solution:** This is normal and intentional for offline use. Silvirica's Zero-Model FastGate and AST/Graph queries will function 100% locally with 0 tokens. To enable cloud LLM reasoning, export `OPENAI_API_KEY` or `ANTHROPIC_API_KEY`.
+
+### 2. How to clear or reset cache after large refactorings?
+- Run `silvirica analyze --force` to re-index all symbols and update the project state hash.
+- To clear all multi-tier caches manually: `silvirica cache --clear`.
+
+### 3. PowerShell execution policy blocks installer
+- Run with bypass: `powershell -ExecutionPolicy Bypass -File .\install.ps1`.
+- Silvirica does **not** require Administrator privileges and installs cleanly to `%LOCALAPPDATA%\silvirica`.
 
 ---
 

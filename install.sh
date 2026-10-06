@@ -11,6 +11,9 @@
 set -euo pipefail
 
 VERSION="0.1.0"
+RELEASE=""
+CHANNEL="release"
+EXPECTED_SHA256=""
 DRY_RUN=0
 FORCE=0
 
@@ -18,6 +21,18 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --version)
             VERSION="$2"
+            shift 2
+            ;;
+        --release)
+            RELEASE="$2"
+            shift 2
+            ;;
+        --channel)
+            CHANNEL="$2"
+            shift 2
+            ;;
+        --expected-sha256)
+            EXPECTED_SHA256="$2"
             shift 2
             ;;
         --dry-run)
@@ -35,10 +50,14 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
+TARGET_VERSION="${RELEASE:-$VERSION}"
+TARGET_VERSION="${TARGET_VERSION#v}"
+RELEASE_TAG="v${TARGET_VERSION}"
+
 echo ""
 echo "================================================================="
 echo "        SILVIRICA AI HARDENED POSIX INSTALLER                   "
-echo "  Universal AI Intelligence Enhancement Runtime (v${VERSION})   "
+echo "  Universal AI Intelligence Enhancement Runtime (v${TARGET_VERSION})   "
 echo "================================================================="
 echo ""
 
@@ -58,11 +77,25 @@ else
     exit 1
 fi
 
-PY_VER=$("${PYTHON_BIN}" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}')")
+"${PYTHON_BIN}" -c "import sys; sys.exit(0 if sys.version_info >= (3, 9) else 1)" || {
+    echo "Error: Python 3.9+ is required." >&2
+    exit 1
+}
+
+PY_VER=$("${PYTHON_BIN}" -c "import sys; print(f'{sys.version_info.major}.{sys.version_info.minor}.{sys.version_info.micro}')")
 echo ">> Verified Python runtime: Python ${PY_VER} (${PYTHON_BIN})"
 
+if [ -n "${EXPECTED_SHA256}" ]; then
+    EXPECTED_SHA256=$(echo "${EXPECTED_SHA256}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+    if [ ${#EXPECTED_SHA256} -ne 64 ]; then
+        echo "Error: --expected-sha256 must be a 64-character SHA-256 hash string." >&2
+        exit 1
+    fi
+fi
+
 if [ "${DRY_RUN}" -eq 1 ]; then
-    echo "[DRY RUN] Environment check passed. Exiting dry run."
+    echo "[DRY RUN] Environment check passed. Installation target: ${VENV_DIR}"
+    echo "[DRY RUN] Exiting dry run."
     exit 0
 fi
 
@@ -84,6 +117,8 @@ rollback() {
         rm -rf "${VENV_DIR}"
         mv "${BACKUP_DIR}" "${VENV_DIR}"
         echo ">> Rollback complete." >&2
+    elif [ -d "${VENV_DIR}" ]; then
+        rm -rf "${VENV_DIR}"
     fi
     exit 1
 }
@@ -95,15 +130,53 @@ if [ ! -d "${VENV_DIR}" ] || [ "${FORCE}" -eq 1 ]; then
     "${PYTHON_BIN}" -m venv "${VENV_DIR}"
 fi
 
-echo ">> Installing Silvirica AI package (Version: ${VERSION})..."
-"${VENV_DIR}/bin/pip" install --upgrade pip --quiet
-if ! "${VENV_DIR}/bin/pip" install "git+https://github.com/vinzz-yy/silvirica-ai.git@v${VERSION}" --quiet 2>/dev/null; then
-    echo ">> Release tag v${VERSION} pending, installing from main..."
-    "${VENV_DIR}/bin/pip" install git+https://github.com/vinzz-yy/silvirica-ai.git --quiet
+VENV_PY="${VENV_DIR}/bin/python"
+
+echo ">> Upgrading pip inside virtual environment..."
+"${VENV_PY}" -m pip install --upgrade pip --quiet || true
+
+if [ -n "${EXPECTED_SHA256}" ]; then
+    echo ">> Downloading and verifying package artifact with SHA-256..."
+    TEMP_PKG="${INSTALL_DIR}/silvirica-pkg.tar.gz"
+    DOWNLOAD_URL="https://github.com/vinzz-yy/silvirica-ai/archive/refs/tags/${RELEASE_TAG}.tar.gz"
+    curl -fsSL "${DOWNLOAD_URL}" -o "${TEMP_PKG}"
+    
+    if command -v sha256sum >/dev/null 2>&1; then
+        ACTUAL_HASH=$(sha256sum "${TEMP_PKG}" | awk '{print $1}')
+    elif command -v shasum >/dev/null 2>&1; then
+        ACTUAL_HASH=$(shasum -a 256 "${TEMP_PKG}" | awk '{print $1}')
+    else
+        ACTUAL_HASH=$("${VENV_PY}" -c "import hashlib; print(hashlib.sha256(open('${TEMP_PKG}','rb').read()).hexdigest())")
+    fi
+    ACTUAL_HASH=$(echo "${ACTUAL_HASH}" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')
+
+    if [ "${ACTUAL_HASH}" != "${EXPECTED_SHA256}" ]; then
+        rm -f "${TEMP_PKG}"
+        echo "Error: SHA-256 checksum mismatch! Expected ${EXPECTED_SHA256}, got ${ACTUAL_HASH}." >&2
+        exit 1
+    fi
+    echo ">> SHA-256 checksum verified successfully."
+    "${VENV_PY}" -m pip install "${TEMP_PKG}" --quiet
+    rm -f "${TEMP_PKG}"
+elif [ "${CHANNEL}" = "main" ] || [ "${CHANNEL}" = "dev" ]; then
+    echo ">> Installing Silvirica AI from main branch (development channel)..."
+    "${VENV_PY}" -m pip install "git+https://github.com/vinzz-yy/silvirica-ai.git" --quiet
+else
+    echo ">> Installing Silvirica AI package (Pinned Release: ${RELEASE_TAG})..."
+    if ! "${VENV_PY}" -m pip install "git+https://github.com/vinzz-yy/silvirica-ai.git@${RELEASE_TAG}" --quiet; then
+        echo "Error: Failed to install release tag '${RELEASE_TAG}'. To install from the development branch explicitly, rerun with '--channel main'." >&2
+        exit 1
+    fi
 fi
 
 ln -sf "${VENV_DIR}/bin/silvirica" "${BIN_DIR}/silvirica"
 echo ">> Linked executable to ${BIN_DIR}/silvirica"
+
+# Verify CLI
+"${VENV_PY}" -m silvirica.cli.main --help >/dev/null 2>&1 || {
+    echo "Error: Silvirica CLI verification failed." >&2
+    exit 1
+}
 
 # Remove backup after success
 rm -rf "${BACKUP_DIR}"
@@ -125,7 +198,8 @@ echo ""
 echo "Try running:"
 echo "  silvirica init"
 echo "  silvirica doctor"
-echo "  silvirica ask \"Where is ProjectBrain?\""
+echo "  silvirica ask \"What functions exist in app.py?\""
 echo "  silvirica security"
 echo "  silvirica mcp"
 echo ""
+
